@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
     CORS_ORIGINS: str = "http://localhost:3000"
+    DATABASE_URL: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

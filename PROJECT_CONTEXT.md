@@ -209,6 +209,46 @@ medical diagnosis system.**
    no startup errors. As decided, this phase deliberately excluded
    PostgreSQL, auth/JWT/RBAC, FastAPI integration, ML, real data, and
    production deployment.
+6. **PostgreSQL + Database Foundation phase executed.** PostgreSQL database
+   `sih_stress_wellness` created and connected. SQLAlchemy 2.0 models for
+   User, Personnel, WellnessAssessment, DutyRecord, Prediction, and AuditLog
+   defined. Alembic configured and initial migration
+   (`bd7a13c80cbb_initial_schema`) applied. FastAPI DB session dependency
+   and `/health` DB connectivity check added. 18 backend tests added and
+   passing. Done deliberately excluded: JWT/OAuth2/RBAC, assessment APIs,
+   ML/XGBoost/SHAP, prediction logic, Flutter/Next.js API integration, real
+   CAPF data, notifications, production deployment. PostgreSQL 18.6 verified
+   running locally with psycopg2 connectivity.
+
+## 11b. Database Foundation Decisions
+
+- Single PostgreSQL database `sih_stress_wellness` (local dev), driver
+  `psycopg2`, URL from environment (`DATABASE_URL`) — no hard-coded
+  credentials. `DATABASE_URL` is a required setting; missing `.env` fails
+  fast.
+- Internal UUID primary keys on every table (PostgreSQL `uuid`), avoiding
+  ID enumeration.
+- **Pseudonymization:** `Personnel` exposes an opaque, unique `opaque_key`
+  (UUID) for ML-facing features; no real personal identifiers are stored.
+- `Personnel` stores only minimum-necessary data (`unit_code`, `is_active`,
+  timestamps) — no names, no service numbers, no personal details.
+- `Prediction` persists the feature snapshot and SHAP explanation alongside
+  risk level and per-class probabilities at prediction time so history stays
+  auditable and the dashboard never re-infers.
+- Enums (`Role`, `RiskLevel`, `DutyType`, `ReviewStatus`) kept as Python
+  enums mapped to `String` columns for migration simplicity.
+- Human-review is a later phase; `Prediction.review_status` already exists
+  (default `pending`) so review wiring can be added without a schema change.
+- Append-only `AuditLog` (actor, subject, action, resource, JSON details)
+  is ready for auth/API phases.
+- Relationship map: `User` ↔ 0..1 `Personnel`; `Personnel` 1—N
+  `WellnessAssessment`, 1—N `DutyRecord`, 1—N `Prediction`, 1—N `AuditLog`;
+  `Prediction` N—1 `WellnessAssessment`.
+- No seed script written. No real or synthetic personnel data is stored.
+  Demo seeding, if ever added, must be clearly marked synthetic.
+- Alembic: `alembic.ini` at `backend/`, `env.py` reads `DATABASE_URL` from
+  Settings, version `bd7a13c80cbb` applied (`alembic upgrade head`). No
+  destructive migrations; `downgrade` drops the initial tables only.
 
 ## 12. Project Constraints
 
@@ -227,11 +267,12 @@ medical diagnosis system.**
 
 ## Current Development Status
 
-**Stage: Foundation / prototype scaffolding.** Planning is complete. The
-FastAPI backend, the Flutter mobile app, and the Next.js dashboard all exist
-at foundation (smoke-level) stage with placeholder UI only. No business
-functionality, data layer, authentication, ML, or frontend-backend
-integration is implemented yet.
+**Stage: Foundation / prototype scaffolding + PostgreSQL foundation.** The
+architecture is finalized. FastAPI backend, Flutter mobile app, and Next.js
+dashboard exist at foundation level. The PostgreSQL database foundation is
+now complete: SQLAlchemy models, Alembic migration, DB session dependency,
+and connectivity health check are in place. No business functionality,
+authentication, ML, or frontend–backend integration is implemented yet.
 
 ### Completed
 - Problem understanding
@@ -244,16 +285,44 @@ integration is implemented yet.
   ml-methodology, sih-demo-script)
 - Root `.gitignore`, `.env.example`, `README.md`
 
+### PostgreSQL + Database Foundation (implemented)
+- PostgreSQL 18.6 running locally; database **`sih_stress_wellness`** created
+- `DATABASE_URL` loaded from environment configuration (required setting,
+  no hard-coded credentials); declared in `backend/.env` (git-ignored) and
+  `backend/.env.example`
+- SQLAlchemy 2.0 models for the six core entities:
+  - `User` — dashboard/mobile account (auth wiring deferred)
+  - `Personnel` — minimal data + opaque pseudonymized `opaque_key`
+  - `WellnessAssessment` — self-reported wellness snapshot
+  - `DutyRecord` — workload/duty data point
+  - `Prediction` — persisted prediction + feature snapshot + SHAP
+  - `AuditLog` — append-only action log
+- Relationships wired: `User`↔`Personnel`, `Personnel`→`WellnessAssessment`,
+  `Personnel`→`DutyRecord`, `Personnel`→`Prediction`, `Prediction`→
+  `WellnessAssessment`, `Personnel`/`User`→`AuditLog`
+- Alembic configured (`backend/alembic.ini`, `backend/alembic/env.py`,
+  `backend/alembic/versions/bd7a13c80cbb_initial_schema.py`)
+- **Migration status:** `bd7a13c80cbb (head)` applied via
+  `alembic upgrade head`; all six tables + `alembic_version` present in
+  PostgreSQL. No destructive migrations.
+- DB connection: SQLAlchemy engine/session in `app/db/`, FastAPI
+  `get_db` dependency; `GET /health` now reports `database: ok`
+- **Database connection status:** connected (psycopg2, PostgreSQL 18.6,
+  localhost:5432)
+- Backend tests: 18 passing (`pytest tests/`), covering config loading,
+  session connectivity, model/relationship registration, and Alembic setup
+- No seed data written; no real or synthetic personnel data stored
+
 ### FastAPI scaffolding (smoke-level)
 - `backend/app/main.py` — FastAPI app + CORS middleware
-- `backend/app/api/routes/health.py` — `GET /health` endpoint (status, app,
-  version, environment)
-- `backend/app/core/config.py` — settings via pydantic-settings
+- `backend/app/api/routes/health.py` — `GET /health` (status, app, version,
+  environment, database connectivity)
+- `backend/app/core/config.py` — settings via pydantic-settings (now
+  includes `DATABASE_URL`)
 - `backend/requirements.txt` (fastapi, uvicorn, pydantic, pydantic-settings,
-  python-dotenv) and `backend/.env.example`
+  python-dotenv, sqlalchemy, alembic, psycopg2-binary, pytest) and
+  `backend/.env.example`
 - `backend/.venv` created locally
-- Empty placeholder folders present: `backend/app/db`, `app/ml`, `app/models`,
-  `app/schemas`, `app/services`, `alembic/`, `scripts/`, `tests/`
 
 ### Flutter scaffolding (smoke-level)
 - Full `flutter create` scaffold in `mobile/` (android, ios, web, windows)
@@ -292,25 +361,34 @@ integration is implemented yet.
   predictions, notifications, complex charts, production deployment
 
 ### Not Started
-- PostgreSQL — no schema, migrations, or connection code
-- Authentication / JWT / RBAC
+- Authentication / JWT / OAuth2 / RBAC — deferred to a later phase
+- FastAPI assessment APIs, prediction endpoints, dashboard APIs — not built,
+  pending integration
 - Synthetic dataset generation
 - XGBoost training, inference, and model artifacts
 - SHAP explanations
 - Real frontend-backend integration (API contract not frozen)
+- Flutter API integration, Next.js API integration — pending
+- Notifications, production deployment — pending
 
 ### Explicit implementation status
 | Component | Status |
 |---|---|
 | Basic FastAPI foundation | Implemented (scaffold + config) |
-| FastAPI `/health` endpoint | Implemented |
+| FastAPI `/health` endpoint | Implemented (includes database connectivity check) |
+| PostgreSQL foundation | Implemented — `sih_stress_wellness` DB, SQLAlchemy models, Alembic migration `bd7a13c80cbb (head)` applied, connection verified |
+| Database entities (6 core tables) | Implemented — User, Personnel, WellnessAssessment, DutyRecord, Prediction, AuditLog |
+| DB session dependency (`get_db`) | Implemented |
+| Backend tests (DB config, session, models, Alembic) | Implemented — 18 passing |
 | Basic Flutter scaffold | Implemented |
 | Flutter minimal placeholder screen | Implemented |
 | Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
 | Next.js login page | Placeholder only (form present, auth not wired) |
-| PostgreSQL | NOT implemented |
-| Authentication / JWT / RBAC | NOT implemented |
+| Authentication / JWT / OAuth2 / RBAC | NOT implemented (schema supports it) |
 | ML (XGBoost) / SHAP | NOT implemented |
+| Prediction logic / prediction endpoints | NOT implemented (storage ready) |
 | FastAPI ↔ dashboard integration | NOT implemented |
+| Flutter ↔ FastAPI integration | NOT implemented |
 | Documentation files | Placeholders only |
-| End-to-end testing | NOT started (backend `tests/` empty; Flutter has smoke test only) |
+| End-to-end testing | NOT started (backend `tests/` implements DB-layer tests; Flutter has smoke test only) |
+| Notifications / production deployment | NOT implemented |
