@@ -200,6 +200,15 @@ medical diagnosis system.**
    executed.
 4. No structural corrections were required — the requested structure was
    already consistent with the finalized architecture.
+5. **Next.js Dashboard Foundation phase executed.** `dashboard/` was
+   initialized in place (Node 24, npm 11) with Next.js 15.5 / React 19 /
+   TypeScript 5 under the App Router. Landing, login placeholder, shared
+   console layout, and placeholder pages for Dashboard, Personnel, and
+   Reviews were created; every page carries visible PROTOTYPE / DEMO and
+   SYNTHETIC DATA notices. `npm run dev` verified running on port 3000 with
+   no startup errors. As decided, this phase deliberately excluded
+   PostgreSQL, auth/JWT/RBAC, FastAPI integration, ML, real data, and
+   production deployment.
 
 ## 12. Project Constraints
 
@@ -218,9 +227,11 @@ medical diagnosis system.**
 
 ## Current Development Status
 
-**Stage: Scaffolding / smoke-level foundation.** Planning is complete. The
-FastAPI backend and the Flutter mobile app exist at scaffolding (smoke-level)
-stage only. No business functionality is implemented yet.
+**Stage: Foundation / prototype scaffolding.** Planning is complete. The
+FastAPI backend, the Flutter mobile app, and the Next.js dashboard all exist
+at foundation (smoke-level) stage with placeholder UI only. No business
+functionality, data layer, authentication, ML, or frontend-backend
+integration is implemented yet.
 
 ### Completed
 - Problem understanding
@@ -252,9 +263,35 @@ stage only. No business functionality is implemented yet.
 - Empty feature folders present: `mobile/lib/features/assessment`, `auth`,
   `profile`, `results`; plus empty `mobile/lib/core`, `widgets`
 
+### Next.js dashboard foundation (initialized)
+- `dashboard/package.json` — Next.js 15.5, React 19, TypeScript 5, all
+  dependencies installed (`node_modules/` present)
+- `dashboard/tsconfig.json` and `dashboard/next.config.mjs` — project
+  configuration
+- `dashboard/app/layout.tsx` — root layout with metadata
+- `dashboard/app/globals.css` — minimal design tokens / base styles
+- `dashboard/app/page.tsx` — landing page: project title, description,
+  "SYNTHETIC DEMO DATA" / "PROTOTYPE" indicators, sign-in link, skip link
+- `dashboard/app/login/page.tsx` — login placeholder (form present but
+  disabled; auth not implemented)
+- `dashboard/app/console-layout.tsx` — shared dashboard shell (header with
+  project name and role badge, nav bar: Dashboard / Personnel / Reviews,
+  footer with synthetic-data disclaimer)
+- `dashboard/app/dashboard/page.tsx` — risk overview placeholder (LOW /
+  MEDIUM / HIGH cards showing dashes; no real data)
+- `dashboard/app/personnel/page.tsx` — personnel list placeholder
+- `dashboard/app/reviews/page.tsx` — human-review queue placeholder
+- `dashboard/components/`, `dashboard/lib/`, `dashboard/types/` — empty
+  directories retained for future use
+- All pages use the App Router convention; `npm run dev` starts on port
+  3000 with no errors at foundation level
+- All console pages display visible PROTOTYPE / DEMO and SYNTHETIC DATA
+  notices per the project's security and privacy decisions
+- **Not implemented in this phase:** PostgreSQL, authentication/JWT/RBAC,
+  FastAPI integration, ML/XGBoost/SHAP, real personnel data, real
+  predictions, notifications, complex charts, production deployment
+
 ### Not Started
-- Next.js dashboard — `dashboard/` contains empty folders only; no
-  package.json, no app code, not initialized
 - PostgreSQL — no schema, migrations, or connection code
 - Authentication / JWT / RBAC
 - Synthetic dataset generation
@@ -269,10 +306,11 @@ stage only. No business functionality is implemented yet.
 | FastAPI `/health` endpoint | Implemented |
 | Basic Flutter scaffold | Implemented |
 | Flutter minimal placeholder screen | Implemented |
-| Next.js dashboard | NOT initialized |
+| Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
+| Next.js login page | Placeholder only (form present, auth not wired) |
 | PostgreSQL | NOT implemented |
 | Authentication / JWT / RBAC | NOT implemented |
 | ML (XGBoost) / SHAP | NOT implemented |
-| Frontend-backend integration | NOT implemented |
+| FastAPI ↔ dashboard integration | NOT implemented |
 | Documentation files | Placeholders only |
 | End-to-end testing | NOT started (backend `tests/` empty; Flutter has smoke test only) |

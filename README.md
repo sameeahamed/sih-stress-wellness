@@ -29,8 +29,22 @@ Additional technical planning is tracked in `docs/`.
 
 ## Status
 
-Prototype development is at the **scaffolding / smoke-level foundation** stage:
-a basic FastAPI backend (with `GET /health`) and a basic Flutter mobile app
-(minimal placeholder screen) exist. No business functionality is implemented
-yet. See `PROJECT_CONTEXT.md` for the detailed current development status and
-the list of pending stages.
+Prototype development is at the **foundation / prototype scaffolding** stage:
+a basic FastAPI backend (with `GET /health`), a basic Flutter mobile app
+(minimal placeholder screen), and a Next.js dashboard (landing + login
+placeholders, shared console layout, placeholder Dashboard / Personnel /
+Reviews pages) exist and run locally. No business functionality is
+implemented yet — no data layer, authentication, ML, or frontend-backend
+integration. See `PROJECT_CONTEXT.md` for the detailed current development
+status and the list of pending stages.
+
+### Running the dashboard
+
+```bash
+cd dashboard
+npm install   # first time only
+npm run dev   # starts on http://localhost:3000
+```
+
+All dashboard pages display visible PROTOTYPE / DEMO and SYNTHETIC DATA
+notices; the dashboard currently uses no real CAPF data.
