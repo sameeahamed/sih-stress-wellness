@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Repository root = backend/app/core -> repo root (three levels up).
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -9,6 +14,10 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
     CORS_ORIGINS: str = "http://localhost:3000"
     DATABASE_URL: str
+
+    # ML inference (in-process; artifact shipped from the training pipeline)
+    ML_MODEL_VERSION: str = "v1"
+    ML_ARTIFACTS_DIR: Path = REPO_ROOT / "ml" / "artifacts"
 
     # JWT authentication
     JWT_SECRET_KEY: str

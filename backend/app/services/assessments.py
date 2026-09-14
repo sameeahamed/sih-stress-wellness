@@ -6,9 +6,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Personnel, User, WellnessAssessment
+from app.models import Personnel, Prediction, User, WellnessAssessment
 from app.schemas.assessment import WellnessAssessmentCreate, WellnessAssessmentRead
 from app.services.personnel import get_linked_personnel
+from app.services.predictions import (
+    run_prediction_for_assessment,
+    to_prediction_read,
+)
 from app.services.scope import assert_can_read_record, resolve_personnel_scope
 
 
@@ -26,9 +30,14 @@ def _to_read(assessment: WellnessAssessment) -> WellnessAssessmentRead:
     )
 
 
-def create_assessment(
+def assessment_to_read(assessment: WellnessAssessment) -> WellnessAssessmentRead:
+    return _to_read(assessment)
+
+
+def add_assessment(
     db: Session, personnel: Personnel, data: WellnessAssessmentCreate
-) -> WellnessAssessmentRead:
+) -> WellnessAssessment:
+    """Create an assessment row (flushed, not committed - caller owns txn)."""
     assessment = WellnessAssessment(
         personnel_id=personnel.id,
         stress_level_self_report=data.stress_level_self_report,
@@ -38,9 +47,26 @@ def create_assessment(
         notes=data.notes,
     )
     db.add(assessment)
+    db.flush()
+    return assessment
+
+
+def submit_assessment(
+    db: Session,
+    personnel: Personnel,
+    data: WellnessAssessmentCreate,
+) -> tuple[WellnessAssessment, Prediction | None, str | None]:
+    """Persist the assessment and its automatic stress-risk prediction.
+
+    The assessment and the prediction are committed together so a model
+    failure never leaves a half-written submission. When the personnel lacks
+    duty data the prediction is skipped with an explicit reason.
+    """
+    assessment = add_assessment(db, personnel, data)
+    prediction, skipped_reason = run_prediction_for_assessment(db, assessment)
     db.commit()
     db.refresh(assessment)
-    return _to_read(assessment)
+    return assessment, prediction, skipped_reason
 
 
 def list_assessments(

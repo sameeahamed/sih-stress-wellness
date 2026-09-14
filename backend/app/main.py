@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import assessments, auth, duty_records, health
+from app.api.routes import assessments, auth, duty_records, health, predictions
 from app.core.config import settings
 
 app = FastAPI(
@@ -25,3 +25,4 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(assessments.router)
 app.include_router(duty_records.router)
+app.include_router(predictions.router)

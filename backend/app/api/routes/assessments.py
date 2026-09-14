@@ -15,12 +15,15 @@ from app.api.deps import get_current_active_user, require_roles
 from app.db.session import get_db
 from app.models import Role, User
 from app.schemas.assessment import WellnessAssessmentCreate, WellnessAssessmentRead
+from app.schemas.prediction import AssessmentSubmitResponse
 from app.services.assessments import (
-    create_assessment,
+    assessment_to_read,
     get_assessment,
     get_assessment_for_creation,
     list_assessments,
+    submit_assessment as submit_assessment_service,
 )
+from app.services.predictions import to_prediction_read
 
 router = APIRouter(prefix="/assessments", tags=["assessments"])
 
@@ -31,17 +34,29 @@ READ_ROLES = require_roles(
 
 @router.post(
     "",
-    response_model=WellnessAssessmentRead,
+    response_model=AssessmentSubmitResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def submit_assessment(
     payload: WellnessAssessmentCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_roles(Role.PERSONNEL))],
-) -> WellnessAssessmentRead:
-    """PERSONNEL: submit a self-reported wellness assessment for themselves."""
+) -> AssessmentSubmitResponse:
+    """PERSONNEL: submit a self-reported wellness assessment for themselves.
+
+    A stress-risk prediction and its SHAP contributing factors are generated
+    automatically when the personnel has enough duty data; otherwise the
+    response explains why the prediction was skipped.
+    """
     personnel = get_assessment_for_creation(db, current_user)
-    return create_assessment(db, personnel, payload)
+    assessment, prediction, skipped_reason = submit_assessment_service(
+        db, personnel, payload
+    )
+    return AssessmentSubmitResponse(
+        **assessment_to_read(assessment).model_dump(),
+        prediction=to_prediction_read(prediction) if prediction else None,
+        prediction_skipped_reason=skipped_reason,
+    )
 
 
 @router.get("", response_model=list[WellnessAssessmentRead])

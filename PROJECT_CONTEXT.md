@@ -232,6 +232,24 @@ medical diagnosis system.**
    tests pass. Deliberately excluded: assessment/duty/prediction APIs,
    ML/XGBoost/SHAP, Flutter and Next.js integration, notifications,
    production deployment.
+8. **Assessment + Duty REST APIs phase executed.** `POST/GET /assessments` and
+   `POST/GET /duty-records` with Pydantic validation and a service layer.
+   Duration safety (server-derived `duty_hours`), RBAC scoping on opaque keys,
+   cross-personnel 404/403. Additive migration `c51826e301a9` added nullable
+   duty start/end times. 73 backend tests passing.
+9. **Synthetic Dataset + ML Training Pipeline phase executed.** Synthetic
+   dataset (4,800 rows, seed 42, `SYN-*` keys), validation, 16-feature
+   engineering (no leakage, personnel-disjoint split), XGBoost training
+   (model artifact `v1`), evaluation, SHAP explainability. 39 ML tests
+   passing. Kept separate from FastAPI at this stage.
+10. **FastAPI + ML Inference Integration phase executed.** Automatic
+    LOW/MEDIUM/HIGH stress-risk prediction on assessment submission. The
+    trained `v1` artifact is loaded inside FastAPI (in-process, no
+    microservice), features derived from assessment + duty records with
+    explicit missing-data handling (never fabricated), SHAP contributing
+    factors surfaced, Prediction rows persisted. `GET /predictions` and
+    `GET /predictions/{id}` with the same RBAC rules. 87 backend tests
+    passing.
 
 ## 11b. Database Foundation Decisions
 
@@ -317,18 +335,21 @@ medical diagnosis system.**
 
 **Stage: Foundation + PostgreSQL foundation + Authentication/RBAC security
 foundation + Assessment & Duty REST APIs + Synthetic Dataset & ML Training
-Pipeline.** The architecture is finalized. FastAPI backend, Flutter mobile
-app, and Next.js dashboard exist at foundation level. PostgreSQL is complete
-with six SQLAlchemy models and an applied Alembic migration chain.
-Authentication and RBAC (bcrypt hashing, JWT access tokens, OAuth2 login,
-role-based route guards) are implemented and tested. The wellness assessment
-and duty record REST APIs are implemented with Pydantic validation, a service
-layer, and strict role scoping on opaque personnel identifiers. The first
-reproducible ML training pipeline now exists: a clearly synthetic dataset, a
-validator, deterministic feature engineering, an XGBoost classifier (v1
-artifact), evaluation, and SHAP explainability. Prediction endpoints,
-automatic prediction on submissions, dashboard/Flutter ML integration, and
-real-data validation are NOT implemented yet.
+Pipeline + FastAPI + ML Inference Integration.** The architecture is
+finalized. FastAPI backend, Flutter mobile app, and Next.js dashboard exist at
+foundation level. PostgreSQL is complete with six SQLAlchemy models and an
+applied Alembic migration chain. Authentication and RBAC (bcrypt hashing, JWT
+access tokens, OAuth2 login, role-based route guards) are implemented and
+tested. The wellness assessment and duty record REST APIs are implemented with
+Pydantic validation, a service layer, and strict role scoping on opaque
+personnel identifiers. A clearly synthetic ML training pipeline exists:
+deterministic dataset, feature engineering, XGBoost classifier (v1 artifact),
+evaluation, and SHAP explainability. Automatic stress-risk prediction is
+integrated into the assessment submission flow inside FastAPI — the model
+loads in-process, derives features from assessment + duty records, and
+persists predictions with SHAP contributing factors in PostgreSQL. Frontend
+ML integration (dashboard, Flutter), notifications, and real-data validation
+are NOT implemented yet.
 
 ### Completed
 - Problem understanding
@@ -485,6 +506,54 @@ real-data validation are NOT implemented yet.
   engineering/leakage, artifact integrity, prediction format, valid
   LOW/MEDIUM/HIGH classes. No FastAPI/Flutter dependency.
 
+### FastAPI + ML Inference Integration (implemented)
+- **Automatic prediction on assessment submission:** `POST /assessments` returns
+  an `AssessmentSubmitResponse` that extends `WellnessAssessmentRead` with
+  `prediction: PredictionRead | null` and `prediction_skipped_reason: str | null`.
+- **In-process ML:** the trained `v1` artifact is loaded inside FastAPI through
+  `app.ml.inference` which reuses the shared training-side helpers
+  (`ml.model_io.load_artifact`, `ml.features.compute_feature_frame`) as the
+  single source of truth — the model logic is not duplicated.
+- **Feature derivation:** the 10 raw model features are aggregated from the
+  wellness assessment (rest/sleep/workload/stress) and the personnel's recent
+  duty records (duty_hours_7d, deployment_days_30d, leave_gap_days,
+  leave_count_180d, transfers_12m) via a deterministic replica of the
+  generator's duty_intensity formula.
+- **Missing duty data handling:** if a personnel member has no duty records in
+  the last 30 days, the prediction is skipped with an explicit reason
+  (`prediction_skipped_reason`). Nothing is silently fabricated — missing-data
+  defaults are only used for `leave_gap_days` (365 when no LEAVE record
+  exists) and are flagged in the stored feature snapshot.
+- **Prediction persistence:** `Prediction` row written alongside the assessment
+  within one transaction; stores risk_level, per-class probabilities,
+  feature_snapshot (full 16-feature vector + raw inputs + defaults applied),
+  and SHAP explanation (human-readable contributing factors).
+- **SHAP contributing factors:** positive SHAP contributions toward the
+  predicted class are surfaced as concise phrases (e.g. "elevated weekly duty
+  hours"). Raw SHAP internals are never exposed in the API.
+- **Prediction endpoints:** `GET /predictions` (newest first) and
+  `GET /predictions/{id}` with the same RBAC rules as assessments: PERSONNEL
+  see only their own; view-roles may scope to one personnel via opaque key.
+- **Error handling:** model artifact load failure → 503; invalid features →
+  422; unexpected errors → 500 with no stack traces; the assessment is not
+  persisted when the model fails.
+- **Config:** `ML_MODEL_VERSION` (default `v1`) and `ML_ARTIFACTS_DIR`
+  (default `ml/artifacts` relative to the repository root) added to
+  `app/core/config.py` and `.env.example`.
+- **Backend ML deps:** numpy, pandas, xgboost, shap, scikit-learn, PyYAML
+  added to `backend/requirements.txt` and installed in the backend venv.
+- **No migration needed:** the Prediction schema already contained all
+  required columns (model_version, probabilities, feature_snapshot,
+  shap_explanation, assessment_id). `alembic check` remains clean.
+- **Testing:** 14 new tests in `tests/test_predictions_api.py` covering
+  automatic HIGH/MEDIUM/LOW prediction, skip on missing duty data, DB
+  persistence, RBAC (own-scoped reads, cross-personnel 404/403,
+  officer/commander/admin access, unknown key 404), and model-artifact
+  failure safety (monkeypatched → 503, no assessment persisted).
+- **Live HTTP verification:** assessment → HIGH prediction (0.913 probability)
+  confirmed via running uvicorn; Prediction row verified in PostgreSQL via
+  psql; contributing factors surfaced.
+
 ### FastAPI scaffolding (smoke-level)
 - `backend/app/main.py` — FastAPI app + CORS middleware
 - `backend/app/api/routes/health.py` — `GET /health` (status, app, version,
@@ -533,13 +602,10 @@ real-data validation are NOT implemented yet.
   predictions, notifications, complex charts, production deployment
 
 ### Not Started
-- Prediction endpoints, automatic prediction on assessment submission,
-  dashboard APIs, human-review endpoints — RBAC foundation ready, pending
-  integration with the trained v1 artifact
+- Frontend ML integration (dashboard prediction views, Flutter prediction
+  display) — backend API contract ready
 - Real-data validation / real CAPF data (authorized, governed) — pending
 - Frontend-backend integration (API contract not frozen)
-- Flask-FastAPI inference integration; SHAP results in the dashboard
-- Flutter ↔ FastAPI integration, Next.js ↔ FastAPI integration — pending
 - Notifications, production deployment — pending
 
 ### Explicit implementation status
@@ -552,10 +618,10 @@ real-data validation are NOT implemented yet.
 | DB session dependency (`get_db`) | Implemented |
 | Authentication foundation (bcrypt + JWT + OAuth2) | Implemented — `app/core/security.py`, `app/services/auth.py`, `app/api/routes/auth.py` |
 | RBAC security dependencies | Implemented — `app/api/deps.py`: `get_current_user`, `get_current_active_user`, `require_roles`, `require_admin` |
-| Wellness assessment API | Implemented — `POST/GET /assessments`, `GET /assessments/{id}`, PERSONNEL self-submit + view-role scoped reads on opaque keys |
+| Wellness assessment API | Implemented — `POST/GET /assessments`, `GET /assessments/{id}`, PERSONNEL self-submit + view-role scoped reads on opaque keys; `POST` returns assessment + automatic prediction |
 | Duty record API | Implemented — `POST/GET /duty-records`, `GET /duty-records/{id}`, server-derived duty duration, validation |
 | Alembic migration chain | Implemented — `bd7a13c80cbb` → `c51826e301a9 (head)` (additive duty time columns); `alembic check` clean |
-| Backend tests (DB + auth + RBAC + assessment/duty APIs) | Implemented — 73 passing |
+| Backend tests (DB + auth + RBAC + assessment/duty/prediction APIs) | Implemented — 87 passing |
 | Synthetic stress-risk dataset (v1) | Implemented — 4,800 rows, seed-fixed, clearly labeled SYNTHETIC (`ml/data/generate_synthetic.py`); no real CAPF data |
 | Dataset validation | Implemented — `ml/data/validate_synthetic.py` (missing/ranges/dupes/distribution/target) |
 | Feature engineering | Implemented — `ml/features.py` (16 features, no leakage, personnel-disjoint split) |
@@ -563,7 +629,7 @@ real-data validation are NOT implemented yet.
 | Model evaluation | Implemented — `ml/evaluate.py` (accuracy, balanced acc, macro/weighted F1, per-class PR-AUC, confusion matrix; HIGH-risk recall highlighted) |
 | SHAP explainability | Implemented — `ml/explain.py` (local + global, framed as model factors) |
 | ML unit tests | Implemented — 39 passing (no FastAPI dependency) |
-| Prediction endpoints / automatic prediction | NOT implemented (model artifact ready, integration deferred) |
+| Prediction endpoints / automatic prediction | Implemented — `POST /assessments` auto-generates risk prediction; `GET /predictions`, `GET /predictions/{id}` with RBAC scoping; 87 backend tests |
 | Real-data validation | NOT implemented (pending authorized, governed data) |
 | Basic Flutter scaffold | Implemented |
 | Flutter minimal placeholder screen | Implemented |

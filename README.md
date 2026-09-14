@@ -30,27 +30,33 @@ Additional technical planning is tracked in `docs/`.
 ## Status
 
 Prototype development is at the **foundation / PostgreSQL / authentication &
-RBAC / assessment & duty APIs / synthetic ML training pipeline** stage: a
-FastAPI backend (with `GET /health`, a live PostgreSQL connection,
-`POST /auth/token` + `GET /auth/me` with RBAC role guards, and validated
-wellness-assessment and duty-record endpoints), a basic Flutter mobile app
-(minimal placeholder screen), a Next.js dashboard (landing + login
-placeholders, shared console layout, placeholder Dashboard / Personnel /
-Reviews pages), and a reproducible synthetic-data ML pipeline (XGBoost + SHAP)
-exist and run locally.
+RBAC / assessment & duty APIs / synthetic ML training pipeline / FastAPI + ML
+inference integration** stage: a FastAPI backend (with `GET /health`, a live
+PostgreSQL connection, `POST /auth/token` + `GET /auth/me` with RBAC role
+guards, validated wellness-assessment and duty-record endpoints, and automatic
+LOW/MEDIUM/HIGH stress-risk prediction on assessment submission), a basic
+Flutter mobile app (minimal placeholder screen), a Next.js dashboard (landing
++ login placeholders, shared console layout, placeholder Dashboard /
+Personnel / Reviews pages), and a reproducible synthetic-data ML pipeline
+(XGBoost + SHAP) exist and run locally.
 
-**Synthetic-data ML pipeline is complete (kept separate from FastAPI):**
-a seed-fixed, clearly labeled SYNTHETIC dataset (NO real CAPF personnel data),
-validation, deterministic feature engineering, an XGBoost classifier trained
-on a personnel-disjoint split (model artifact `ml/artifacts/v1`), an honest
-evaluation report, and SHAP explainability. Use of this model requires
-authorized, governed, validated real-world data — synthetic-data performance
-is NOT deployment readiness.
+**Synthetic-data ML pipeline is complete:** a seed-fixed, clearly labeled
+SYNTHETIC dataset (NO real CAPF personnel data), validation, deterministic
+feature engineering, an XGBoost classifier trained on a personnel-disjoint
+split (model artifact `ml/artifacts/v1`), an honest evaluation report, and
+SHAP explainability. Use of this model requires authorized, governed,
+validated real-world data — synthetic-data performance is NOT deployment
+readiness.
 
-No prediction endpoint, automatic prediction-on-submission, dashboard or
-Flutter ML integration, notifications, or real CAPF data are implemented yet.
-See `PROJECT_CONTEXT.md` for the detailed current development status and the
-list of pending stages.
+**FastAPI + ML inference integration is complete:** submitting a wellness
+assessment (`POST /assessments`) automatically loads the `v1` artifact inside
+FastAPI, derives the 10 raw model features from the assessment + the
+personnel's duty records, computes LOW/MEDIUM/HIGH risk with per-class
+probabilities and SHAP contributing factors, and persists the prediction
+(with the feature snapshot) in PostgreSQL. `GET /predictions` and
+`GET /predictions/{id}` expose predictions under the same RBAC scoping as
+assessments. Missing duty data is handled explicitly: prediction is skipped
+with a reason — nothing is silently fabricated.
 
 **Database foundation is complete:** the `sih_stress_wellness` PostgreSQL
 database, six SQLAlchemy core-entity models (User, Personnel,
@@ -70,52 +76,15 @@ PERSONNEL submit their own wellness snapshots and duty records; welfare
 officers, commanders, and admins read records scoped to opaque personnel keys
 (no personal data is ever exposed). Duty durations supplied as `start_time` +
 `end_time` are derived server-side (`duty_hours = end − start`) and never
-trusted from the client. Backend tests (73) pass.
+trusted from the client. Backend tests (87) pass.
 
-No prediction endpoint, automatic prediction-on-submission, dashboard/Flutter
-ML integration, notifications, or real CAPF data are implemented yet. See
+Predictions are generated automatically on assessment submission from the
+trained (SYNTHETIC-only) model; dashboard/Flutter ML integration,
+notifications, and real CAPF data are still pending. See
 `PROJECT_CONTEXT.md` for the detailed current development status and the list
 of pending stages.
 
-### Running the ML pipeline (training side, separate venv)
-
-```bash
-cd ml
-python -m venv .venv                      # first time only
-.venv\Scripts\pip install -r requirements.txt
-```
-then from the repository root:
-```bash
-ml\.venv\Scripts\python -m ml.data.generate_synthetic   # (re)create synthetic dataset
-ml\.venv\Scripts\python -m ml.data.validate_synthetic   # validate it
-ml\.venv\Scripts\python -m ml.train                     # train + save artifacts/v1
-ml\.venv\Scripts\python -m ml.evaluate                  # metrics -> evaluation.json
-ml\.venv\Scripts\python -m ml.explain                   # SHAP local + global
-```
-Run ML tests with `ml\.venv\Scripts\python -m pytest` (from `ml/`). The model
-is trained on a clearly-labeled SYNTHETIC dataset only; real-data validation
-is still pending.
-
 ### Running the backend
-
-### Running the ML pipeline (training side, separate venv)
-
-```bash
-cd ml
-python -m venv .venv                      # first time only
-.venv\Scripts\pip install -r requirements.txt
-```
-then from the repository root:
-```bash
-ml\.venv\Scripts\python -m ml.data.generate_synthetic   # (re)create synthetic dataset
-ml\.venv\Scripts\python -m ml.data.validate_synthetic   # validate it
-ml\.venv\Scripts\python -m ml.train                     # train + save artifacts/v1
-ml\.venv\Scripts\python -m ml.evaluate                  # metrics -> evaluation.json
-ml\.venv\Scripts\python -m ml.explain                   # SHAP local + global
-```
-Run ML tests with `ml\.venv\Scripts\python -m pytest` (from `ml/`). The model
-is trained on a clearly-labeled SYNTHETIC dataset only; real-data validation
-is still pending.
 
 ```bash
 cd backend
@@ -129,13 +98,14 @@ python -m venv .venv                 # first time only
 `GET http://localhost:8000/health` reports API status and database
 connectivity. `POST /auth/token` accepts `username` + `password` (form data)
 and returns a bearer token. `GET /auth/me` (with `Authorization: Bearer ...`)
-returns the authenticated user's minimal profile. `POST /assessments` and
-`POST /duty-records` accept JSON bodies from authenticated PERSONNEL accounts;
-`GET /assessments`, `GET /assessments/{id}`, `GET /duty-records`, and
-`GET /duty-records/{id}` are readable by personnel (own records only) and by
-welfare officers / commanders / admins (optionally scoped via
-`?personnel_key=<opaque>`). The live API schema is available at
-`/openapi.json`. Run backend tests with
+returns the authenticated user's minimal profile. `POST /assessments` accepts
+JSON from authenticated PERSONNEL accounts; a stress-risk prediction is
+generated automatically from the trained model and persisted alongside the
+assessment. `GET /assessments`, `GET /assessments/{id}`, `GET /duty-records`,
+`GET /duty-records/{id}`, `GET /predictions`, and `GET /predictions/{id}` are
+readable by personnel (own records only) and by welfare officers / commanders /
+admins (optionally scoped via `?personnel_key=<opaque>`). The live API schema
+is available at `/openapi.json`. Run backend tests with
 `.venv\Scripts\python -m pytest tests/`.
 
 ### Running the dashboard
