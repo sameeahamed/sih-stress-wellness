@@ -316,13 +316,15 @@ medical diagnosis system.**
 ## Current Development Status
 
 **Stage: Foundation + PostgreSQL foundation + Authentication/RBAC security
-foundation.** The architecture is finalized. FastAPI backend, Flutter mobile
-app, and Next.js dashboard exist at foundation level. PostgreSQL is complete
-with six SQLAlchemy models and an applied Alembic migration. The
-authentication and RBAC security foundation is now in place: bcrypt password
-hashing, JWT access tokens, OAuth2 login, current-user dependency, and
-role-based route guards are implemented and tested. No business functionality
-(assessment, prediction, review), ML, or frontend–backend integration is
+foundation + Assessment & Duty REST APIs.** The architecture is finalized.
+FastAPI backend, Flutter mobile app, and Next.js dashboard exist at
+foundation level. PostgreSQL is complete with six SQLAlchemy models and an
+applied Alembic migration chain. Authentication and RBAC (bcrypt hashing,
+JWT access tokens, OAuth2 login, role-based route guards) are implemented
+and tested. The wellness assessment and duty record REST APIs are now
+implemented with Pydantic validation, a service layer, and strict role
+scoping on opaque personnel identifiers. ML (XGBoost/SHAP), prediction
+endpoints, human-review workflows, and frontend–backend integration are not
 implemented yet.
 
 ### Completed
@@ -353,9 +355,10 @@ implemented yet.
   `WellnessAssessment`, `Personnel`/`User`→`AuditLog`
 - Alembic configured (`backend/alembic.ini`, `backend/alembic/env.py`,
   `backend/alembic/versions/bd7a13c80cbb_initial_schema.py`)
-- **Migration status:** `bd7a13c80cbb (head)` applied via
-  `alembic upgrade head`; all six tables + `alembic_version` present in
-  PostgreSQL. No destructive migrations.
+- **Migration status:** `c51826e301a9 (head)` applied via
+  `alembic upgrade head` (chain: `bd7a13c80cbb` → `c51826e301a9`); all six
+  tables + `alembic_version` present in PostgreSQL. No destructive
+  migrations.
 - DB connection: SQLAlchemy engine/session in `app/db/`, FastAPI
   `get_db` dependency; `GET /health` now reports `database: ok`
 - **Database connection status:** connected (psycopg2, PostgreSQL 18.6,
@@ -388,6 +391,45 @@ implemented yet.
 - Synthetic demo users (`demo_personnel`, `demo_welfare_officer`,
   `demo_commander`, `demo_admin`) created and cleaned up by tests; no
   real CAPF data stored
+
+### Assessment + Duty REST APIs (implemented)
+- **Wellness assessment API** (`app/api/routes/assessments.py`):
+  - `POST /assessments` — PERSONNEL only, submits their own wellness snapshot
+    (validated 1–10 for stress/workload scores, 0–24 h for 7-day rest/sleep
+    averages, optional notes ≤ 2000 chars)
+  - `GET /assessments?personnel_key=<opaque>` — list newest-first; PERSONNEL
+    always see only their own, view-roles may scope to one personnel via its
+    opaque key (unknown key → 404)
+  - `GET /assessments/{assessment_id}` — detail; a PERSONNEL account reading
+    another personnel's record gets 404 (no existence leak), view-roles may
+    read any
+- **Duty record API** (`app/api/routes/duty_records.py`):
+  - `POST /duty-records` — PERSONNEL only
+  - `GET /duty-records`, `GET /duty-records/{record_id}` — same scoping rules
+    as assessments
+- **Duration safety:** when `start_time`/`end_time` are supplied together the
+  server derives `duty_hours = end - start` and ignores any client-supplied
+  value; durations must land in (0, 24] h. When no clock times are available a
+  self-reported `duty_hours` in (0, 24] is accepted. `record_date` cannot be
+  in the future; `end_time` before `start_time` → 422.
+- **Schema change (justified):** added nullable `start_time` / `end_time` to
+  `duty_records` so the API can support the required duty start/end fields and
+  derive duration server-side. Additive migration
+  `c51826e301a9_add_duty_record_start_end_times` preserves all existing data.
+  Named migration path is `duty_type` validated against the `DutyType` enum and
+  `deployment_id` opaque ≤ 64 chars.
+- **Privacy by design:** responses expose only the opaque `personnel_key` and
+  never internal personnel IDs, hashes, or personal data.
+- **Service layer:** `app/services/assessments.py`, `app/services/duty_records.py`
+  (create/read + authorization), `app/services/scope.py` (role-based query
+  scoping), `app/services/personnel.py` (opaque-key lookup helpers)
+- **Schemas:** `app/schemas/assessment.py`, `app/schemas/duty.py`
+- **Testing:** 73 backend tests passing, including 21 new API tests
+  (auth 401s, validation 422s, duration derivation, own-history isolation,
+  cross-personnel 404/403, officer/commander/admin access, unknown-key 404s)
+- Live HTTP verification against a running uvicorn: login → 201 assessment →
+  422 invalid → 201 duty (derived 8.0 h) → role-scoped lists → 401 without
+  token; OpenAPI exposes all 7 paths
 
 ### FastAPI scaffolding (smoke-level)
 - `backend/app/main.py` — FastAPI app + CORS middleware
@@ -437,8 +479,8 @@ implemented yet.
   predictions, notifications, complex charts, production deployment
 
 ### Not Started
-- FastAPI assessment APIs, duty endpoints, prediction endpoints, dashboard
-  APIs — RBAC foundation ready, pending integration
+- Prediction endpoints, dashboard APIs, human-review endpoints — RBAC
+  foundation ready, pending integration
 - Synthetic dataset generation
 - XGBoost training, inference, and model artifacts
 - SHAP explanations
@@ -451,12 +493,15 @@ implemented yet.
 |---|---|
 | Basic FastAPI foundation | Implemented (scaffold + config) |
 | FastAPI `/health` endpoint | Implemented (includes database connectivity check) |
-| PostgreSQL foundation | Implemented — `sih_stress_wellness` DB, SQLAlchemy models, Alembic migration `bd7a13c80cbb (head)` applied, connection verified |
+| PostgreSQL foundation | Implemented — `sih_stress_wellness` DB, SQLAlchemy models, Alembic migration `bd7a13c80cbb` applied, connection verified |
 | Database entities (6 core tables) | Implemented — User, Personnel, WellnessAssessment, DutyRecord, Prediction, AuditLog |
 | DB session dependency (`get_db`) | Implemented |
 | Authentication foundation (bcrypt + JWT + OAuth2) | Implemented — `app/core/security.py`, `app/services/auth.py`, `app/api/routes/auth.py` |
 | RBAC security dependencies | Implemented — `app/api/deps.py`: `get_current_user`, `get_current_active_user`, `require_roles`, `require_admin` |
-| Backend tests (DB + auth + RBAC) | Implemented — 50 passing |
+| Wellness assessment API | Implemented — `POST/GET /assessments`, `GET /assessments/{id}`, PERSONNEL self-submit + view-role scoped reads on opaque keys |
+| Duty record API | Implemented — `POST/GET /duty-records`, `GET /duty-records/{id}`, server-derived duty duration, validation |
+| Alembic migration chain | Implemented — `bd7a13c80cbb` → `c51826e301a9 (head)` (additive duty time columns); `alembic check` clean |
+| Backend tests (DB + auth + RBAC + assessment/duty APIs) | Implemented — 73 passing |
 | Basic Flutter scaffold | Implemented |
 | Flutter minimal placeholder screen | Implemented |
 | Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
@@ -466,5 +511,5 @@ implemented yet.
 | FastAPI ↔ dashboard integration | NOT implemented |
 | Flutter ↔ FastAPI integration | NOT implemented |
 | Documentation files | Placeholders only |
-| End-to-end testing | NOT started (backend `tests/` implements DB-layer + auth-layer tests; Flutter has smoke test only) |
+| End-to-end testing | NOT started (backend `tests/` implements DB-layer + auth-layer + assessment/duty API tests; Flutter has smoke test only) |
 | Notifications / production deployment | NOT implemented |

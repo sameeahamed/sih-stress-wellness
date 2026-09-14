@@ -6,7 +6,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 
 ALEMBIC_INI = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
-EXPECTED_REVISION = "bd7a13c80cbb"
+EXPECTED_REVISION = "c51826e301a9"
 
 
 def test_alembic_ini_exists() -> None:

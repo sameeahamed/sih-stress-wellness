@@ -23,6 +23,12 @@ class DutyRecord(Base):
     duty_type: Mapped[str] = mapped_column(String(24), index=True)
 
     duty_hours: Mapped[float] = mapped_column(Numeric(5, 2))
+    start_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    end_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     deployment_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

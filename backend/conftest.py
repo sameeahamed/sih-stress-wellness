@@ -69,5 +69,61 @@ def demo_users():
 
 
 @pytest.fixture()
+def second_personnel(demo_users):
+    """A second personnel user isolated from the demo personnel record.
+
+    Lets tests verify that a personnel account can never read or infer another
+    personnel member's records. Removed on teardown.
+    """
+    db = SessionLocal()
+    personnel: Personnel | None = None
+    user: User | None = None
+    try:
+        personnel = Personnel(unit_code="DEMO2")
+        db.add(personnel)
+        db.flush()
+        user = User(
+            username="demo_personnel_2",
+            hashed_password=hash_password(DEMO_PASSWORD),
+            role=Role.PERSONNEL.value,
+            is_active=True,
+            personnel_id=personnel.id,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        db.refresh(personnel)
+        yield {
+            "user": user,
+            "personnel": personnel,
+            "personnel_key": personnel.opaque_key,
+        }
+    finally:
+        if user:
+            existing_user = db.get(User, user.id)
+            if existing_user:
+                db.delete(existing_user)
+        if personnel:
+            existing_personnel = db.get(Personnel, personnel.id)
+            if existing_personnel:
+                db.delete(existing_personnel)
+        db.commit()
+        db.close()
+
+
+@pytest.fixture()
 def client() -> TestClient:
     return TestClient(app)
+
+
+def login_token(client: TestClient, username: str, password: str = DEMO_PASSWORD) -> str:
+    """Log in and return a bearer access token for the demo user."""
+    response = client.post(
+        "/auth/token", data={"username": username, "password": password}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
+
+
+def auth_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
