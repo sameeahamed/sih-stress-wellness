@@ -219,6 +219,19 @@ medical diagnosis system.**
    ML/XGBoost/SHAP, prediction logic, Flutter/Next.js API integration, real
    CAPF data, notifications, production deployment. PostgreSQL 18.6 verified
    running locally with psycopg2 connectivity.
+7. **Authentication + RBAC Security Foundation phase executed.** Implemented
+   bcrypt password hashing and verification, JWT access-token creation and
+   validation (PyJWT, HS256), FastAPI OAuth2 password flow
+   (`POST /auth/token`), a minimal authenticated-user endpoint
+   (`GET /auth/me`), and reusable dependencies for current-user resolution and
+   role-based access control (`get_current_user`, `get_current_active_user`,
+   `require_roles`, `require_admin`). Secrets come from environment
+   configuration (`JWT_SECRET_KEY`, `JWT_ALGORITHM`,
+   `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`) — nothing hard-coded. No database model
+   change was required, so no new Alembic migration was created. 50 backend
+   tests pass. Deliberately excluded: assessment/duty/prediction APIs,
+   ML/XGBoost/SHAP, Flutter and Next.js integration, notifications,
+   production deployment.
 
 ## 11b. Database Foundation Decisions
 
@@ -250,6 +263,41 @@ medical diagnosis system.**
   Settings, version `bd7a13c80cbb` applied (`alembic upgrade head`). No
   destructive migrations; `downgrade` drops the initial tables only.
 
+## 11c. Authentication + RBAC Foundation Decisions
+
+- **Password hashing:** bcrypt directly (no passlib) — `hash_password` /
+  `verify_password` in `app/core/security.py`. Passwords are never stored in
+  plaintext and never logged. Empty/invalid hashes fail closed.
+- **JWT:** PyJWT, HS256, claims `sub` (user UUID), `iat`, `exp`, `type:
+  access`. Secrets come from env (`JWT_SECRET_KEY`, `JWT_ALGORITHM`,
+  `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` default 30). No hard-coded secrets;
+  `JWT_SECRET_KEY` is required (fails fast when missing). Tokens carry no
+  role/personal data — authorization is always resolved from the database
+  row, so role changes and deactivation take effect immediately.
+- **OAuth2 password flow:** `POST /auth/token` accepts
+  `OAuth2PasswordRequestForm` (username+password) and returns the standard
+  `{"access_token": ..., "token_type": "bearer"}` body. `GET /auth/me`
+  returns a minimal profile and, for personnel accounts, only the opaque
+  pseudonymized key — never personal data.
+- **RBAC:** reusable dependencies in `app/api/deps.py`
+  (`get_current_user`, `get_current_active_user`, `require_roles(*roles)`,
+  `require_admin`). Unauthenticated → 401; authenticated but wrong role →
+  403. Guards are per-route via `Depends(require_roles(...))`.
+- **Roles:** `Role` enum in `app/models/enums.py` —
+  `personnel`, `welfare_officer`, `commander`, `administrator`.
+- **Service layer:** `app/services/auth.py` (`get_user_by_username`,
+  `authenticate_user`) — inactive accounts and hashed-password-less users
+  never authenticate.
+- **No migration needed:** the existing `users` table already has
+  `username`, `hashed_password`, `role`, `is_active`; model unchanged.
+  `alembic check` confirms models and migration are in sync.
+- **Test users:** synthetic demo users (`demo_personnel`,
+  `demo_welfare_officer`, `demo_commander`, `demo_admin`, shared demo
+  password) are created and removed per test by the `demo_users` fixture in
+  `backend/conftest.py`. No real CAPF data.
+- **Merged a newer FastAPI/Starlette TestClient `httpx2` requirement** into
+  the test dependencies.
+
 ## 12. Project Constraints
 
 1. Privacy by design.
@@ -267,12 +315,15 @@ medical diagnosis system.**
 
 ## Current Development Status
 
-**Stage: Foundation / prototype scaffolding + PostgreSQL foundation.** The
-architecture is finalized. FastAPI backend, Flutter mobile app, and Next.js
-dashboard exist at foundation level. The PostgreSQL database foundation is
-now complete: SQLAlchemy models, Alembic migration, DB session dependency,
-and connectivity health check are in place. No business functionality,
-authentication, ML, or frontend–backend integration is implemented yet.
+**Stage: Foundation + PostgreSQL foundation + Authentication/RBAC security
+foundation.** The architecture is finalized. FastAPI backend, Flutter mobile
+app, and Next.js dashboard exist at foundation level. PostgreSQL is complete
+with six SQLAlchemy models and an applied Alembic migration. The
+authentication and RBAC security foundation is now in place: bcrypt password
+hashing, JWT access tokens, OAuth2 login, current-user dependency, and
+role-based route guards are implemented and tested. No business functionality
+(assessment, prediction, review), ML, or frontend–backend integration is
+implemented yet.
 
 ### Completed
 - Problem understanding
@@ -312,6 +363,31 @@ authentication, ML, or frontend–backend integration is implemented yet.
 - Backend tests: 18 passing (`pytest tests/`), covering config loading,
   session connectivity, model/relationship registration, and Alembic setup
 - No seed data written; no real or synthetic personnel data stored
+
+### Authentication + RBAC Security Foundation (implemented)
+- bcrypt password hashing and verification — no plain-text passwords
+- JWT access tokens via PyJWT (HS256), with configurable
+  `JWT_SECRET_KEY`, `JWT_ALGORITHM`, `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`
+  (required from environment; no hard-coded secrets)
+- `POST /auth/token` — standard OAuth2 password flow returning
+  `{"access_token": ..., "token_type": "bearer"}`
+- `GET /auth/me` — authenticated-user profile (returns opaque
+  pseudonymized key for personnel, never personal data)
+- Reusable FastAPI dependencies: `get_current_user`, `get_current_active_user`,
+  `require_roles(*roles)`, `require_admin` — unauthenticated → 401,
+  wrong role → 403
+- `app/services/auth.py` — user lookup and credential verification; inactive
+  accounts and users without a hashed password fail authentication
+- Role enum: `personnel`, `welfare_officer`, `commander`, `administrator`
+- **Migration required:** None — the existing `users` table schema already
+  has `username`, `hashed_password`, `role`, `is_active`; `alembic check`
+  confirms no new operations needed
+- 50 backend tests passing (config, session, models, Alembic, hashing,
+  token lifecycle, login success/failure, authenticated-user dependency,
+  RBAC guards)
+- Synthetic demo users (`demo_personnel`, `demo_welfare_officer`,
+  `demo_commander`, `demo_admin`) created and cleaned up by tests; no
+  real CAPF data stored
 
 ### FastAPI scaffolding (smoke-level)
 - `backend/app/main.py` — FastAPI app + CORS middleware
@@ -361,14 +437,13 @@ authentication, ML, or frontend–backend integration is implemented yet.
   predictions, notifications, complex charts, production deployment
 
 ### Not Started
-- Authentication / JWT / OAuth2 / RBAC — deferred to a later phase
-- FastAPI assessment APIs, prediction endpoints, dashboard APIs — not built,
-  pending integration
+- FastAPI assessment APIs, duty endpoints, prediction endpoints, dashboard
+  APIs — RBAC foundation ready, pending integration
 - Synthetic dataset generation
 - XGBoost training, inference, and model artifacts
 - SHAP explanations
 - Real frontend-backend integration (API contract not frozen)
-- Flutter API integration, Next.js API integration — pending
+- Flutter ↔ FastAPI integration, Next.js ↔ FastAPI integration — pending
 - Notifications, production deployment — pending
 
 ### Explicit implementation status
@@ -379,16 +454,17 @@ authentication, ML, or frontend–backend integration is implemented yet.
 | PostgreSQL foundation | Implemented — `sih_stress_wellness` DB, SQLAlchemy models, Alembic migration `bd7a13c80cbb (head)` applied, connection verified |
 | Database entities (6 core tables) | Implemented — User, Personnel, WellnessAssessment, DutyRecord, Prediction, AuditLog |
 | DB session dependency (`get_db`) | Implemented |
-| Backend tests (DB config, session, models, Alembic) | Implemented — 18 passing |
+| Authentication foundation (bcrypt + JWT + OAuth2) | Implemented — `app/core/security.py`, `app/services/auth.py`, `app/api/routes/auth.py` |
+| RBAC security dependencies | Implemented — `app/api/deps.py`: `get_current_user`, `get_current_active_user`, `require_roles`, `require_admin` |
+| Backend tests (DB + auth + RBAC) | Implemented — 50 passing |
 | Basic Flutter scaffold | Implemented |
 | Flutter minimal placeholder screen | Implemented |
 | Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
 | Next.js login page | Placeholder only (form present, auth not wired) |
-| Authentication / JWT / OAuth2 / RBAC | NOT implemented (schema supports it) |
 | ML (XGBoost) / SHAP | NOT implemented |
 | Prediction logic / prediction endpoints | NOT implemented (storage ready) |
 | FastAPI ↔ dashboard integration | NOT implemented |
 | Flutter ↔ FastAPI integration | NOT implemented |
 | Documentation files | Placeholders only |
-| End-to-end testing | NOT started (backend `tests/` implements DB-layer tests; Flutter has smoke test only) |
+| End-to-end testing | NOT started (backend `tests/` implements DB-layer + auth-layer tests; Flutter has smoke test only) |
 | Notifications / production deployment | NOT implemented |

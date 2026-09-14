@@ -29,22 +29,27 @@ Additional technical planning is tracked in `docs/`.
 
 ## Status
 
-Prototype development is at the **foundation / prototype scaffolding +
-PostgreSQL foundation** stage: a basic FastAPI backend (with `GET /health` and
-a live PostgreSQL connection via SQLAlchemy/Alembic), a basic Flutter mobile
-app (minimal placeholder screen), and a Next.js dashboard (landing + login
-placeholders, shared console layout, placeholder Dashboard / Personnel /
-Reviews pages) exist and run locally.
+Prototype development is at the **foundation / PostgreSQL / authentication
+security** stage: a FastAPI backend (with `GET /health`, a live PostgreSQL
+connection, and `POST /auth/token` + `GET /auth/me` with RBAC role guards), a
+basic Flutter mobile app (minimal placeholder screen), and a Next.js dashboard
+(landing + login placeholders, shared console layout, placeholder Dashboard /
+Personnel / Reviews pages) exist and run locally.
 
 **Database foundation is complete:** the `sih_stress_wellness` PostgreSQL
 database, six SQLAlchemy core-entity models (User, Personnel,
 WellnessAssessment, DutyRecord, Prediction, AuditLog), the Alembic migration
 (`bd7a13c80cbb` at head), and the FastAPI DB session dependency are in place.
-Backend DB-layer tests (18) pass.
 
-No business functionality is implemented yet — no authentication, assessment
-APIs, ML, or frontend–backend integration. See `PROJECT_CONTEXT.md` for the
-detailed current development status and the list of pending stages.
+**Authentication + RBAC foundation is complete:** bcrypt password hashing,
+JWT access tokens (HS256), a standard OAuth2 password-flow login endpoint,
+a `/auth/me` authenticated-user endpoint, and reusable per-route role-guard
+dependencies are implemented and tested. Secrets come from environment
+configuration; nothing is hard-coded. Backend tests (50) pass.
+
+No business functionality is implemented yet — no assessment, prediction, or
+review APIs, no ML, no frontend–backend integration. See `PROJECT_CONTEXT.md`
+for the detailed current development status and the list of pending stages.
 
 ### Running the backend
 
@@ -52,13 +57,16 @@ detailed current development status and the list of pending stages.
 cd backend
 python -m venv .venv                 # first time only
 .venv\Scripts\pip install -r requirements.txt
-# create backend/.env from backend/.env.example and set DATABASE_URL
+# create backend/.env from backend/.env.example; set DATABASE_URL and JWT_SECRET_KEY
 .venv\Scripts\python -m alembic upgrade head   # apply migrations
 .venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 
 `GET http://localhost:8000/health` reports API status and database
-connectivity. Run backend tests with `.venv\Scripts\python -m pytest tests/`.
+connectivity. `POST /auth/token` accepts `username` + `password` (form data)
+and returns a bearer token. `GET /auth/me` (with `Authorization: Bearer ...`)
+returns the authenticated user's minimal profile. Run backend tests with
+`.venv\Scripts\python -m pytest tests/`.
 
 ### Running the dashboard
 

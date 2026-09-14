@@ -18,7 +18,9 @@ def test_settings_defaults() -> None:
 def test_settings_env_override(tmp_path):
     env_path = tmp_path / ".env"
     env_path.write_text(
-        "ENVIRONMENT=test\nDATABASE_URL=postgresql+psycopg2://u:p@localhost:5432/testdb\n"
+        "ENVIRONMENT=test\n"
+        "DATABASE_URL=postgresql+psycopg2://u:p@localhost:5432/testdb\n"
+        "JWT_SECRET_KEY=test-only-secret-that-is-at-least-32-bytes\n"
     )
     s = Settings(_env_file=str(env_path))
     assert s.ENVIRONMENT == "test"
