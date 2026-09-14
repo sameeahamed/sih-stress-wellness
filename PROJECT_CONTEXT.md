@@ -316,16 +316,19 @@ medical diagnosis system.**
 ## Current Development Status
 
 **Stage: Foundation + PostgreSQL foundation + Authentication/RBAC security
-foundation + Assessment & Duty REST APIs.** The architecture is finalized.
-FastAPI backend, Flutter mobile app, and Next.js dashboard exist at
-foundation level. PostgreSQL is complete with six SQLAlchemy models and an
-applied Alembic migration chain. Authentication and RBAC (bcrypt hashing,
-JWT access tokens, OAuth2 login, role-based route guards) are implemented
-and tested. The wellness assessment and duty record REST APIs are now
-implemented with Pydantic validation, a service layer, and strict role
-scoping on opaque personnel identifiers. ML (XGBoost/SHAP), prediction
-endpoints, human-review workflows, and frontend–backend integration are not
-implemented yet.
+foundation + Assessment & Duty REST APIs + Synthetic Dataset & ML Training
+Pipeline.** The architecture is finalized. FastAPI backend, Flutter mobile
+app, and Next.js dashboard exist at foundation level. PostgreSQL is complete
+with six SQLAlchemy models and an applied Alembic migration chain.
+Authentication and RBAC (bcrypt hashing, JWT access tokens, OAuth2 login,
+role-based route guards) are implemented and tested. The wellness assessment
+and duty record REST APIs are implemented with Pydantic validation, a service
+layer, and strict role scoping on opaque personnel identifiers. The first
+reproducible ML training pipeline now exists: a clearly synthetic dataset, a
+validator, deterministic feature engineering, an XGBoost classifier (v1
+artifact), evaluation, and SHAP explainability. Prediction endpoints,
+automatic prediction on submissions, dashboard/Flutter ML integration, and
+real-data validation are NOT implemented yet.
 
 ### Completed
 - Problem understanding
@@ -431,6 +434,57 @@ implemented yet.
   422 invalid → 201 duty (derived 8.0 h) → role-scoped lists → 401 without
   token; OpenAPI exposes all 7 paths
 
+### Synthetic Dataset + ML Training Pipeline (implemented, SEPARATE from FastAPI)
+- **Location:** `ml/` (own `ml/.venv` + `ml/requirements.txt`). Deliberately
+  decoupled from the FastAPI inference path — prediction endpoints come later.
+- **SYNTHETIC DATA NOTICE:** there is NO real CAPF personnel dataset. All data
+  is generated (`ml/data/generate_synthetic.py`), clearly labeled synthetic
+  (`SYN-*` opaque keys, no names/phones/addresses/real IDs), seed-fixed
+  (`random_seed: 42`) and reproducible. Documented in
+  `ml/data/SYNTHETIC_DATASET.md`.
+- **Synthetic dataset v1:** 4,800 rows = 1,200 personnel × 4 weekly snapshots.
+  Class mix LOW 42% / MEDIUM 33% / HIGH 25%.
+  `ml/data/synthetic_risk_dataset_v1.csv` (git-ignored, regenerable).
+- **Target classes:** `risk_label` ∈ {LOW, MEDIUM, HIGH}. Labels come from a
+  documented weighted multi-factor heuristic + per-person latent term + noise
+  (no single-feature cutoff, not trivially memorizable). Labels are NOT
+  clinically validated stress diagnoses.
+- **Data validation** (`ml/data/validate_synthetic.py`): missing values,
+  ranges, dtypes, duplicates, class distribution, target validity — fails
+  clearly (`ValidationError`) instead of training on bad data.
+- **Features used by the model (16, ordered in `ml/features.py::FEATURE_NAMES`):**
+  10 raw (duty_hours_7d, rest_hours_7d, sleep_hours_7d, workload_level,
+  deployment_days_30d, leave_gap_days, leave_count_180d, transfers_12m,
+  duty_intensity, self_report_stress) + 6 derived (duty_rest_ratio,
+  sleep_deficit, deployment_intensity, leave_gap_weeks, recent_workload_trend,
+  recent_duty_trend). No leakage: trends use only the same person's previous
+  snapshot; split is personnel-disjoint.
+- **Training** (`ml/train.py`): XGBoost (multi:softprob, balanced class
+  weights, early stopping on validation, `tree_method: hist`, fixed seed),
+  personnel-disjoint 70/15/15 split. Runs via `python -m ml.train`.
+- **Evaluation** (`ml/evaluate.py`): accuracy, balanced accuracy, macro &
+  weighted F1, per-class precision/recall/F1, confusion matrix, per-class
+  PR-AUC; **HIGH-risk recall reported prominently**. Metrics are on the
+  held-out synthetic test split ONLY — NOT deployment readiness.
+- **Explainability** (`ml/explain.py`): SHAP TreeExplainer; local explanations
+  (top contributing model factors per sample) + global mean |SHAP| per risk
+  class. Framed as contributing model factors, NOT medical causes/diagnoses.
+- **Artifacts** (`ml/artifacts/v1/`, mostly git-ignored): `model.json`,
+  `features.json`, `label_classes.json`, `train_config.json`, `metadata.json`
+  (model version, feature list/order, training config, dataset version),
+  `evaluation.json`, `local_explanations.json`, `global_importance.json`.
+- **Config:** `ml/config.yaml` (seed, target, dataset path/version, split
+  fractions, model params, model version, artifact path) — nothing hard-coded.
+- **Model version:** `v1`. **Synthetic evaluation results (v1):** accuracy
+  0.588, balanced accuracy 0.585, macro F1 0.583, HIGH precision 0.579 /
+  recall 0.632 / F1 0.605, PR-AUC LOW 0.803 / MEDIUM 0.438 / HIGH 0.634.
+  GOOD SYNTHETIC PERFORMANCE IS NOT DEPLOYMENT READINESS — real-data
+  validation remains pending.
+- **Testing:** 39 ML tests pass (`ml/.venv\Scripts\python -m pytest` in
+  `ml/`) — generator reproducibility, validation failures, feature
+  engineering/leakage, artifact integrity, prediction format, valid
+  LOW/MEDIUM/HIGH classes. No FastAPI/Flutter dependency.
+
 ### FastAPI scaffolding (smoke-level)
 - `backend/app/main.py` — FastAPI app + CORS middleware
 - `backend/app/api/routes/health.py` — `GET /health` (status, app, version,
@@ -479,12 +533,12 @@ implemented yet.
   predictions, notifications, complex charts, production deployment
 
 ### Not Started
-- Prediction endpoints, dashboard APIs, human-review endpoints — RBAC
-  foundation ready, pending integration
-- Synthetic dataset generation
-- XGBoost training, inference, and model artifacts
-- SHAP explanations
-- Real frontend-backend integration (API contract not frozen)
+- Prediction endpoints, automatic prediction on assessment submission,
+  dashboard APIs, human-review endpoints — RBAC foundation ready, pending
+  integration with the trained v1 artifact
+- Real-data validation / real CAPF data (authorized, governed) — pending
+- Frontend-backend integration (API contract not frozen)
+- Flask-FastAPI inference integration; SHAP results in the dashboard
 - Flutter ↔ FastAPI integration, Next.js ↔ FastAPI integration — pending
 - Notifications, production deployment — pending
 
@@ -502,14 +556,21 @@ implemented yet.
 | Duty record API | Implemented — `POST/GET /duty-records`, `GET /duty-records/{id}`, server-derived duty duration, validation |
 | Alembic migration chain | Implemented — `bd7a13c80cbb` → `c51826e301a9 (head)` (additive duty time columns); `alembic check` clean |
 | Backend tests (DB + auth + RBAC + assessment/duty APIs) | Implemented — 73 passing |
+| Synthetic stress-risk dataset (v1) | Implemented — 4,800 rows, seed-fixed, clearly labeled SYNTHETIC (`ml/data/generate_synthetic.py`); no real CAPF data |
+| Dataset validation | Implemented — `ml/data/validate_synthetic.py` (missing/ranges/dupes/distribution/target) |
+| Feature engineering | Implemented — `ml/features.py` (16 features, no leakage, personnel-disjoint split) |
+| XGBoost training pipeline | Implemented — `ml/train.py`, `ml/config.yaml`, artifact **v1** in `ml/artifacts/v1` |
+| Model evaluation | Implemented — `ml/evaluate.py` (accuracy, balanced acc, macro/weighted F1, per-class PR-AUC, confusion matrix; HIGH-risk recall highlighted) |
+| SHAP explainability | Implemented — `ml/explain.py` (local + global, framed as model factors) |
+| ML unit tests | Implemented — 39 passing (no FastAPI dependency) |
+| Prediction endpoints / automatic prediction | NOT implemented (model artifact ready, integration deferred) |
+| Real-data validation | NOT implemented (pending authorized, governed data) |
 | Basic Flutter scaffold | Implemented |
 | Flutter minimal placeholder screen | Implemented |
 | Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
 | Next.js login page | Placeholder only (form present, auth not wired) |
-| ML (XGBoost) / SHAP | NOT implemented |
-| Prediction logic / prediction endpoints | NOT implemented (storage ready) |
 | FastAPI ↔ dashboard integration | NOT implemented |
 | Flutter ↔ FastAPI integration | NOT implemented |
 | Documentation files | Placeholders only |
-| End-to-end testing | NOT started (backend `tests/` implements DB-layer + auth-layer + assessment/duty API tests; Flutter has smoke test only) |
+| End-to-end testing | NOT started (backend `tests/` implements DB-layer + auth-layer + assessment/duty API tests; `ml/tests/` implements pipeline tests; Flutter has smoke test only) |
 | Notifications / production deployment | NOT implemented |

@@ -1,0 +1,9 @@
+# ML pipeline dependencies (training side). Inference via FastAPI is a later
+# phase and is deliberately kept separate from this environment.
+numpy>=2.3
+pandas>=2.3
+scikit-learn>=1.7
+xgboost>=3.0
+shap>=0.47
+PyYAML>=6.0
+pytest>=8.3

@@ -1,0 +1,36 @@
+# Synthetic stress-risk ML pipeline configuration.
+#
+# All paths below are relative to this file's directory (ml/).
+#
+# IMPORTANT: this pipeline is trained on SYNTHETIC/DEMO data only. It is a
+# prototype of the reproducibility and evaluation workflow. Production
+# deployment requires authorized, governed, validated real-world data.
+
+random_seed: 42
+
+dataset:
+  path: data/synthetic_risk_dataset_v1.csv
+  version: "v1"
+  n_personnel: 1200
+  snapshots_per_personnel: 4
+
+target: risk_label
+
+model_version: "v1"
+artifacts_dir: artifacts
+
+split:
+  val_fraction: 0.15
+  test_fraction: 0.15
+
+model:
+  objective: "multi:softprob"
+  eval_metric: "mlogloss"
+  eta: 0.05
+  max_depth: 6
+  min_child_weight: 2
+  subsample: 0.8
+  colsample_bytree: 0.8
+  n_estimators: 500
+  early_stopping_rounds: 30
+  n_jobs: 4
