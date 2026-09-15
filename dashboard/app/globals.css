@@ -6,6 +6,17 @@
   --text-muted: #6b7280;
   --accent: #1d4ed8;
   --accent-soft: #eef2ff;
+  --risk-low: #16a34a;
+  --risk-low-bg: #dcfce7;
+  --risk-low-border: #86efac;
+  --risk-medium: #d97706;
+  --risk-medium-bg: #fef3c7;
+  --risk-medium-border: #fde68a;
+  --risk-high: #dc2626;
+  --risk-high-bg: #fee2e2;
+  --risk-high-border: #fca5a5;
+  --pending: #6b7280;
+  --pending-bg: #f3f4f6;
 }
 
 * {

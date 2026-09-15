@@ -57,8 +57,8 @@ export default function LandingPage() {
           }}
         >
           <strong>Not logged in.</strong>{" "}
-          <a href="/login">Sign in to the demo console</a> to explore the
-          placeholder console pages.
+          <a href="/login">Sign in to the demo console</a> to view synthetic
+          stress-risk data served by the FastAPI backend.
         </div>
 
         <div style={{ display: "flex", gap: "12px" }}>

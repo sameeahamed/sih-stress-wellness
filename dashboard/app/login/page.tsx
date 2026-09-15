@@ -1,6 +1,32 @@
-import Link from "next/link";
+"use client";
+import { useState, type FormEvent } from "react";
+import { login, getMe } from "../../lib/api";
 
 export default function LoginPage() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const { access_token } = await login(username, password);
+      localStorage.setItem("access_token", access_token);
+      const me = await getMe();
+      localStorage.setItem("current_user", JSON.stringify(me));
+      window.location.href = "/dashboard";
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Login failed";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <main
       style={{
@@ -40,11 +66,26 @@ export default function LoginPage() {
 
         <h1 style={{ margin: "0 0 4px", fontSize: "20px" }}>Sign in</h1>
         <p style={{ margin: "0 0 24px", color: "var(--text-muted)", fontSize: "14px" }}>
-          Officer &amp; commander dashboard (placeholder — authentication is not
-          implemented yet in this phase).
+          Officer &amp; commander dashboard (synthetic demo data).
         </p>
 
-        <form style={{ display: "grid", gap: "16px" }}>
+        {error && (
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: "8px",
+              background: "var(--risk-high-bg)",
+              border: "1px solid var(--risk-high-border)",
+              color: "var(--risk-high)",
+              fontSize: "13px",
+              marginBottom: "16px",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: "16px" }}>
           <div style={{ display: "grid", gap: "6px" }}>
             <label htmlFor="username" style={{ fontSize: "14px" }}>
               Username
@@ -53,7 +94,9 @@ export default function LoginPage() {
               id="username"
               name="username"
               autoComplete="off"
-              placeholder="demo-officer"
+              placeholder="seed_welfare_officer"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               style={{
                 padding: "10px 12px",
                 borderRadius: "8px",
@@ -71,7 +114,9 @@ export default function LoginPage() {
               name="password"
               type="password"
               autoComplete="off"
-              placeholder="••••••••"
+              placeholder="demo-password-123"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               style={{
                 padding: "10px 12px",
                 borderRadius: "8px",
@@ -81,18 +126,20 @@ export default function LoginPage() {
             />
           </div>
           <button
-            type="button"
+            type="submit"
+            disabled={loading}
             style={{
               padding: "10px 16px",
               borderRadius: "8px",
-              background: "var(--accent)",
+              background: loading ? "var(--text-muted)" : "var(--accent)",
               border: "none",
               color: "#ffffff",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
               fontSize: "14px",
+              fontWeight: 600,
             }}
           >
-            Sign in (disabled — future phase)
+            {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
 
@@ -103,9 +150,9 @@ export default function LoginPage() {
             color: "var(--text-muted)",
           }}
         >
-          Login form is a placeholder. Use{" "}
-          <Link href="/dashboard">Skip to demo dashboard</Link> to view the
-          prototype console.
+          Demo credentials: <strong>seed_welfare_officer</strong> /{" "}
+          <strong>demo-password-123</strong> (or <strong>seed_admin</strong>,
+          <strong>seed_commander</strong>). All data is synthetic.
         </p>
       </div>
     </main>

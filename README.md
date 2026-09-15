@@ -31,14 +31,15 @@ Additional technical planning is tracked in `docs/`.
 
 Prototype development is at the **foundation / PostgreSQL / authentication &
 RBAC / assessment & duty APIs / synthetic ML training pipeline / FastAPI + ML
-inference integration** stage: a FastAPI backend (with `GET /health`, a live
-PostgreSQL connection, `POST /auth/token` + `GET /auth/me` with RBAC role
-guards, validated wellness-assessment and duty-record endpoints, and automatic
-LOW/MEDIUM/HIGH stress-risk prediction on assessment submission), a basic
-Flutter mobile app (minimal placeholder screen), a Next.js dashboard (landing
-+ login placeholders, shared console layout, placeholder Dashboard /
-Personnel / Reviews pages), and a reproducible synthetic-data ML pipeline
-(XGBoost + SHAP) exist and run locally.
+inference / dashboard integration** stage: a FastAPI backend (with
+`GET /health`, a live PostgreSQL connection, `POST /auth/token` +
+`GET /auth/me` with RBAC role guards, validated wellness-assessment and
+duty-record endpoints, and automatic LOW/MEDIUM/HIGH stress-risk prediction on
+assessment submission), a basic Flutter mobile app (minimal placeholder
+screen), a Next.js dashboard wired to the live backend (JWT login, risk
+overview, personnel directory, HIGH-risk review queue with SHAP factors), and
+a reproducible synthetic-data ML pipeline (XGBoost + SHAP) exist and run
+locally.
 
 **Synthetic-data ML pipeline is complete:** a seed-fixed, clearly labeled
 SYNTHETIC dataset (NO real CAPF personnel data), validation, deterministic
@@ -78,9 +79,14 @@ officers, commanders, and admins read records scoped to opaque personnel keys
 `end_time` are derived server-side (`duty_hours = end − start`) and never
 trusted from the client. Backend tests (87) pass.
 
-Predictions are generated automatically on assessment submission from the
-trained (SYNTHETIC-only) model; dashboard/Flutter ML integration,
-notifications, and real CAPF data are still pending. See
+**Dashboard ↔ FastAPI integration is complete:** the Next.js dashboard logs
+in via `POST /auth/token` and reads live predictions/assessments through a
+typed API client. `/dashboard` shows latest-risk-per-personnel overview
+counts and recent HIGH-risk predictions; `/personnel` shows the opaque-key
+personnel directory with risk badges; `/reviews` shows the HIGH-risk
+human-review queue with model confidence and SHAP contributing factors. All
+pages carry visible SYNTHETIC DATA / PROTOTYPE notices. Flutter ML
+integration, notifications, and real CAPF data remain pending. See
 `PROJECT_CONTEXT.md` for the detailed current development status and the list
 of pending stages.
 
@@ -108,14 +114,31 @@ admins (optionally scoped via `?personnel_key=<opaque>`). The live API schema
 is available at `/openapi.json`. Run backend tests with
 `.venv\Scripts\python -m pytest tests/`.
 
+### Seeding demo data (dashboard demo)
+
+```bash
+cd backend
+.venv\Scripts\python -m scripts.seed_demo_data
+```
+
+Seeds deterministic SYNTHETIC demo profiles — `seed_personnel_low` (LOW),
+`seed_personnel_med` (MEDIUM), `seed_personnel_high` (HIGH), plus
+`seed_welfare_officer` / `seed_commander` / `seed_admin` — all with password
+`demo-password-123` (credentials also shown on the dashboard login page).
+Idempotent: re-running wipes and recreates the seed personnel's records only.
+The seed usernames never collide with the pytest fixture accounts, so the
+test suite keeps passing with seeded data.
+
 ### Running the dashboard
 
 ```bash
 cd dashboard
 npm install   # first time only
+# optional: create dashboard/.env with NEXT_PUBLIC_API_BASE_URL (default http://localhost:8000)
 npm run dev   # starts on http://localhost:3000
 ```
 
-All dashboard pages display visible PROTOTYPE / DEMO and SYNTHETIC DATA
-notices; the dashboard currently uses no real CAPF data. No real or synthetic
-personnel data is stored in the database.
+Sign in with `seed_welfare_officer` / `demo-password-123`. All dashboard
+pages display visible PROTOTYPE / DEMO and SYNTHETIC DATA notices; the
+dashboard only ever shows synthetic demo data. Start the FastAPI backend first
+(`npm run build` type-checks the dashboard).

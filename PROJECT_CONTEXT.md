@@ -250,6 +250,20 @@ medical diagnosis system.**
     factors surfaced, Prediction rows persisted. `GET /predictions` and
     `GET /predictions/{id}` with the same RBAC rules. 87 backend tests
     passing.
+11. **Next.js Dashboard ↔ FastAPI Integration phase executed.** The dashboard
+    now talks to the live backend: JWT login (`POST /auth/token`), a typed
+    API client (`lib/api.ts`), and TypeScript types mirroring the backend
+    schemas. Login page authenticates; header shows the real current user and
+    role with sign-out; nav highlights the active route. Dashboard page
+    shows latest-risk-per-personnel overview counts + recent HIGH-risk list;
+    Personnel page shows the opaque-key personnel directory with latest risk
+    badges and last assessment; Reviews page shows the HIGH-risk human-review
+    queue with SHAP contributing factors and confidence probabilities.
+    `backend/scripts/seed_demo_data.py` seeds deterministic LOW/MEDIUM/HIGH
+    demo personnel (idempotent; usernames deliberately disjoint from pytest
+    fixture accounts so the test suite still passes with seeded data). All
+    pages remain client components over the live API. Full backend suite
+    still 87 passing; dashboard builds and serves clean.
 
 ## 11b. Database Foundation Decisions
 
@@ -347,9 +361,11 @@ deterministic dataset, feature engineering, XGBoost classifier (v1 artifact),
 evaluation, and SHAP explainability. Automatic stress-risk prediction is
 integrated into the assessment submission flow inside FastAPI — the model
 loads in-process, derives features from assessment + duty records, and
-persists predictions with SHAP contributing factors in PostgreSQL. Frontend
-ML integration (dashboard, Flutter), notifications, and real-data validation
-are NOT implemented yet.
+persists predictions with SHAP contributing factors in PostgreSQL. The
+Next.js dashboard is wired to the live backend: JWT login, risk overview,
+per-personnel directory, and a HIGH-risk human-review queue with SHAP
+factors (all client components over the live API). Flutter integration,
+notifications, and real-data validation are NOT implemented yet.
 
 ### Completed
 - Problem understanding
@@ -573,39 +589,43 @@ are NOT implemented yet.
 - Empty feature folders present: `mobile/lib/features/assessment`, `auth`,
   `profile`, `results`; plus empty `mobile/lib/core`, `widgets`
 
-### Next.js dashboard foundation (initialized)
-- `dashboard/package.json` — Next.js 15.5, React 19, TypeScript 5, all
-  dependencies installed (`node_modules/` present)
-- `dashboard/tsconfig.json` and `dashboard/next.config.mjs` — project
-  configuration
-- `dashboard/app/layout.tsx` — root layout with metadata
-- `dashboard/app/globals.css` — minimal design tokens / base styles
-- `dashboard/app/page.tsx` — landing page: project title, description,
-  "SYNTHETIC DEMO DATA" / "PROTOTYPE" indicators, sign-in link, skip link
-- `dashboard/app/login/page.tsx` — login placeholder (form present but
-  disabled; auth not implemented)
-- `dashboard/app/console-layout.tsx` — shared dashboard shell (header with
-  project name and role badge, nav bar: Dashboard / Personnel / Reviews,
-  footer with synthetic-data disclaimer)
-- `dashboard/app/dashboard/page.tsx` — risk overview placeholder (LOW /
-  MEDIUM / HIGH cards showing dashes; no real data)
-- `dashboard/app/personnel/page.tsx` — personnel list placeholder
-- `dashboard/app/reviews/page.tsx` — human-review queue placeholder
-- `dashboard/components/`, `dashboard/lib/`, `dashboard/types/` — empty
-  directories retained for future use
-- All pages use the App Router convention; `npm run dev` starts on port
-  3000 with no errors at foundation level
-- All console pages display visible PROTOTYPE / DEMO and SYNTHETIC DATA
-  notices per the project's security and privacy decisions
-- **Not implemented in this phase:** PostgreSQL, authentication/JWT/RBAC,
-  FastAPI integration, ML/XGBoost/SHAP, real personnel data, real
-  predictions, notifications, complex charts, production deployment
+### Next.js dashboard ↔ FastAPI integration (implemented)
+- `dashboard/types/index.ts` — TypeScript types mirroring the backend schemas
+  (`Role`, `RiskLevel`, `ReviewStatus`, `Token`, `CurrentUser`,
+  `WellnessAssessment`, `Prediction`).
+- `dashboard/lib/api.ts` — typed fetch client reading
+  `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`); handles the
+  bearer token, 401 → redirect to `/login`, and error surfaces. `login`,
+  `getMe`, `fetchAssessments`, `fetchPredictions`, `fetchPrediction`.
+- Login page (`app/login/page.tsx`) — real JWT flow: `POST /auth/token`,
+  stores token + current user, redirects to `/dashboard`; inline error
+  handling.
+- `app/console-layout.tsx` — client component: header shows the authenticated
+  user + role, sign-out button, active-route highlighting in the nav.
+- `app/dashboard/page.tsx` — risk overview: latest-prediction-per-personnel
+  counts (LOW/MEDIUM/HIGH) + recent HIGH-risk table.
+- `app/personnel/page.tsx` — opaque-key personnel directory with latest risk
+  badge, last assessment (self-reported stress score + timestamp), prediction
+  count.
+- `app/reviews/page.tsx` — HIGH-risk human-review queue: confidence
+  probabilities, review status, and the SHAP contributing factors.
+- Shared components: `components/risk-badge.tsx`, `components/page-state.tsx`.
+- `dashboard/.env.example` — documents `NEXT_PUBLIC_API_BASE_URL`.
+- Demo data: `backend/scripts/seed_demo_data.py` seeds deterministic
+  LOW/MEDIUM/HIGH personnel + view-role accounts (`seed_personnel_low`,
+  `seed_personnel_med`, `seed_personnel_high`, `seed_welfare_officer`,
+  `seed_commander`, `seed_admin`, all `demo-password-123`). Idempotent and
+  destructive only for its own seed personnel; usernames deliberately avoid
+  the pytest fixture names so `pytest` still passes with seeded data.
+- **Not implemented in this phase:** review "mark as reviewed" (no PATCH
+  backend endpoint yet), Flutter integration, notifications.
 
 ### Not Started
-- Frontend ML integration (dashboard prediction views, Flutter prediction
-  display) — backend API contract ready
+- Frontend ML integration in Flutter (prediction display) — backend API
+  contract ready; dashboard side complete
+- Human review "mark as reviewed" API (PATCH) — review queue is read-only in
+  the dashboard today
 - Real-data validation / real CAPF data (authorized, governed) — pending
-- Frontend-backend integration (API contract not frozen)
 - Notifications, production deployment — pending
 
 ### Explicit implementation status
@@ -634,9 +654,9 @@ are NOT implemented yet.
 | Basic Flutter scaffold | Implemented |
 | Flutter minimal placeholder screen | Implemented |
 | Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
-| Next.js login page | Placeholder only (form present, auth not wired) |
-| FastAPI ↔ dashboard integration | NOT implemented |
+| Next.js login page | Implemented — JWT flow wired to `POST /auth/token` |
+| FastAPI ↔ dashboard integration | Implemented — typed API client, risk overview, personnel directory, HIGH-risk review queue with SHAP factors |
 | Flutter ↔ FastAPI integration | NOT implemented |
 | Documentation files | Placeholders only |
-| End-to-end testing | NOT started (backend `tests/` implements DB-layer + auth-layer + assessment/duty API tests; `ml/tests/` implements pipeline tests; Flutter has smoke test only) |
+| End-to-end testing | Partially started — backend `tests/` (87) covers DB + auth + RBAC + assessment/duty/prediction APIs; `ml/tests/` (39) covers the pipeline; Flutter has smoke test only; dashboard verified via live HTTP checks against the seeded backend |
 | Notifications / production deployment | NOT implemented |

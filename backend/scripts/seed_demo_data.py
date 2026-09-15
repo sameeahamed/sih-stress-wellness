@@ -30,33 +30,36 @@ from app.models import DutyRecord, Personnel, Prediction, Role, User, WellnessAs
 
 DEMO_PASSWORD = "demo-password-123"
 
+# NOTE: usernames deliberately do NOT overlap with the pytest fixture
+# accounts in ``tests/conftest.py`` (demo_personnel, demo_welfare_officer,
+# ...) so seeding the dev database never breaks the backend test suite.
 USERS: list[tuple[str, Role, str | None]] = [
-    ("demo_personnel", Role.PERSONNEL, "DEMO-LOW"),
-    ("demo_personnel_2", Role.PERSONNEL, "DEMO-MEDIUM"),
-    ("demo_personnel_3", Role.PERSONNEL, "DEMO-HIGH"),
-    ("demo_welfare_officer", Role.WELFARE_OFFICER, None),
-    ("demo_commander", Role.COMMANDER, None),
-    ("demo_admin", Role.ADMINISTRATOR, None),
+    ("seed_personnel_low", Role.PERSONNEL, "DEMO-LOW"),
+    ("seed_personnel_med", Role.PERSONNEL, "DEMO-MEDIUM"),
+    ("seed_personnel_high", Role.PERSONNEL, "DEMO-HIGH"),
+    ("seed_welfare_officer", Role.WELFARE_OFFICER, None),
+    ("seed_commander", Role.COMMANDER, None),
+    ("seed_admin", Role.ADMINISTRATOR, None),
 ]
 
 # Assessment bodies driving each model class (values verified against the v1
 # artifact so the predicted class is deterministic).
 ASSESSMENTS = {
-    "demo_personnel": {
+    "seed_personnel_low": {
         "stress_level_self_report": 2,
         "rest_hours_7d": 9.0,
         "sleep_hours_7d": 8.0,
         "workload_score": 2,
         "notes": "On leave, feeling great. (SYNTHETIC demo)",
     },
-    "demo_personnel_2": {
+    "seed_personnel_med": {
         "stress_level_self_report": 6,
         "rest_hours_7d": 6.0,
         "sleep_hours_7d": 5.5,
         "workload_score": 6,
         "notes": "Steady pressure. (SYNTHETIC demo)",
     },
-    "demo_personnel_3": {
+    "seed_personnel_high": {
         "stress_level_self_report": 9,
         "rest_hours_7d": 5.0,
         "sleep_hours_7d": 4.0,
@@ -67,9 +70,9 @@ ASSESSMENTS = {
 
 
 def duties_for(username: str) -> list[tuple[int, str, float]]:
-    if username == "demo_personnel":
+    if username == "seed_personnel_low":
         return [(0, "leave", 8)]
-    if username == "demo_personnel_2":
+    if username == "seed_personnel_med":
         duties = [(days, "duty", 11) for days in range(1, 6)]
         duties += [(40, "deployment", 8), (45, "deployment", 8), (70, "leave", 8)]
         return duties
@@ -112,8 +115,8 @@ def submit_assessment(client: TestClient, token: str, assessment: dict) -> None:
 def main() -> None:
     db = SessionLocal()
     try:
-        # Wipe demo personnel records so re-runs stay deterministic.
-        for username in ("demo_personnel", "demo_personnel_2", "demo_personnel_3"):
+        # Wipe seed personnel records so re-runs stay deterministic.
+        for username in ("seed_personnel_low", "seed_personnel_med", "seed_personnel_high"):
             user = db.scalar(select(User).where(User.username == username))
             if user is None or user.personnel is None:
                 continue
@@ -165,8 +168,9 @@ def main() -> None:
                 add_duty(client, token, days_ago, duty_type, hours)
             submit_assessment(client, token, assessment)
         print(
-            "seeded: demo_personnel (LOW), demo_personnel_2 (MEDIUM), "
-            "demo_personnel_3 (HIGH), plus welfare officer / commander / admin."
+            "seeded: seed_personnel_low (LOW), seed_personnel_med (MEDIUM), "
+            "seed_personnel_high (HIGH), plus seed_welfare_officer / "
+            "seed_commander / seed_admin."
         )
         print(f"login for all users: username / {DEMO_PASSWORD}")
     finally:

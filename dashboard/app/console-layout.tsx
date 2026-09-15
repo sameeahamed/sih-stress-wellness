@@ -1,4 +1,6 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 const NAV_ITEMS = [
@@ -11,7 +13,27 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+function getCurrentUser(): { username: string; role: string } | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("current_user");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const pathname = usePathname();
+  const user = getCurrentUser();
+
+  function handleSignOut() {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("current_user");
+    window.location.href = "/login";
+  }
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <header
@@ -64,8 +86,23 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               fontWeight: 600,
             }}
           >
-            Welfare Officer (demo)
+            {user ? `${user.username} (${user.role})` : "…"}
           </span>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            style={{
+              padding: "4px 10px",
+              borderRadius: "8px",
+              border: "1px solid var(--border)",
+              background: "var(--bg)",
+              color: "var(--text)",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            Sign out
+          </button>
         </div>
       </header>
 
@@ -78,21 +115,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           background: "var(--surface)",
         }}
       >
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            style={{
-              padding: "6px 14px",
-              borderRadius: "8px",
-              color: "var(--text)",
-              textDecoration: "none",
-              fontSize: "14px",
-            }}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "8px",
+                color: active ? "#ffffff" : "var(--text)",
+                background: active ? "var(--accent)" : "transparent",
+                textDecoration: "none",
+                fontSize: "14px",
+                fontWeight: active ? 600 : 400,
+              }}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
 
       <main style={{ flex: 1, padding: "24px" }}>{children}</main>
