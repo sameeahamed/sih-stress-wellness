@@ -35,5 +35,13 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
+    @property
+    def cors_origin_regex(self) -> str | None:
+        # Development-only: allow Flutter Web's *dynamic* localhost port
+        # (and loopback) without opening up production.
+        if self.ENVIRONMENT != "development":
+            return None
+        return r"^https?://(localhost|127\.0\.0\.1)(:\d{1,5})?$"
+
 
 settings = Settings()
