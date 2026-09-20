@@ -1,13 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:sih_stress_wellness/core/token_store.dart';
 import 'package:sih_stress_wellness/main.dart';
 
-void main() {
-  testWidgets('Home screen renders app title', (WidgetTester tester) async {
-    await tester.pumpWidget(const SihStressWellnessApp());
+import 'fake_api.dart';
 
-    expect(find.text('Stress & Welfare Monitoring'), findsOneWidget);
-    expect(find.text('SIH 2026 Prototype'), findsOneWidget);
-    expect(find.text('SYNTHETIC DEMO DATA'), findsOneWidget);
+void main() {
+  testWidgets('app boots into the login screen without a stored session',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      SihStressWellnessApp(
+        apiClient: FakeApiClient(),
+        tokenStore: InMemoryTokenStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Personnel App'), findsOneWidget);
+    expect(find.text('Stress & Welfare Monitoring'), findsNothing);
   });
 }

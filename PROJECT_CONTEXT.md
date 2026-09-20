@@ -364,8 +364,11 @@ loads in-process, derives features from assessment + duty records, and
 persists predictions with SHAP contributing factors in PostgreSQL. The
 Next.js dashboard is wired to the live backend: JWT login, risk overview,
 per-personnel directory, and a HIGH-risk human-review queue with SHAP
-factors (all client components over the live API). Flutter integration,
-notifications, and real-data validation are NOT implemented yet.
+factors (all client components over the live API). The Flutter personnel
+  app is now fully wired to the same live backend (login/JWT, assessment with
+  automatic ML prediction, duty record with server-derived hours, prediction
+  result, history). Notifications and real-data validation are NOT implemented
+  yet.
 
 ### Completed
 - Problem understanding
@@ -581,13 +584,58 @@ notifications, and real-data validation are NOT implemented yet.
   `backend/.env.example`
 - `backend/.venv` created locally
 
-### Flutter scaffolding (smoke-level)
-- Full `flutter create` scaffold in `mobile/` (android, ios, web, windows)
-- `mobile/lib/main.dart` — minimal placeholder home screen only (app title,
-  "SIH 2026 Prototype", "SYNTHETIC DEMO DATA" chip)
-- `mobile/test/widget_test.dart` — smoke test for the placeholder screen
-- Empty feature folders present: `mobile/lib/features/assessment`, `auth`,
-  `profile`, `results`; plus empty `mobile/lib/core`, `widgets`
+### Flutter ↔ FastAPI integration (implemented)
+
+The personnel app speaks to the live FastAPI backend over real REST, same 
+contract the dashboard uses.
+
+#### App surface
+- **Login** (`features/auth/login_screen.dart`): real JWT flow — `POST
+  /auth/token`, token persisted via `flutter_secure_storage`
+  (`SecureTokenStore`), `GET /auth/me` for the authenticated user + opaque
+  personnel key; inline error handling; "SYNTHETIC DEMO DATA" notice.
+- **Home / profile** (`features/home/home_screen.dart`): shows the
+  authenticated user + role, opaque key, sign-out.
+- **Assessment** (`features/assessment/assessment_form_screen.dart`): wellness
+  snapshot (validated 1–10 stress/workload, 0–24 h rest/sleep) → `POST
+  /assessments` which auto-generates the risk prediction in-process →
+  returns assessment + LOW/MEDIUM/HIGH prediction + SHAP contributing factors.
+- **Duty record** (`features/duty/duty_record_form_screen.dart`): duty
+  type + optional clock times → `POST /duty-records`; the server derives
+  `duty_hours` from start/end (clock times win; a self-reported value is
+  only used when no clock times are given). Duration validation, no future
+  dates.
+- **Prediction result** (`features/results/prediction_result_screen.dart`):
+  risk level + per-class probabilities + SHAP contributing factors.
+- **History** (`features/history/history_screen.dart`): user-scoped
+  assessment/prediction history via `GET /assessments`, `/predictions`
+  (RBAC — personnel only see their own).
+- **Duty result** (`features/duty/duty_result_screen.dart`): confirmation
+  with server-derived duty duration.
+
+#### Wiring
+- `mobile/lib/core/config.dart` — `API_BASE_URL` via
+  `--dart-define=API_BASE_URL` (default `http://localhost:8000`; Android
+  emulator uses `http://10.0.2.2:8000`).
+- `mobile/lib/core/models.dart` — Dart models mirroring the backend Pydantic
+  schemas; `DutyRecordCreate.toJson` never sends `duty_hours` when clock
+  times are present (server derives duration — parity with the backend
+  contract).
+- `mobile/lib/core/api_client.dart` — JWT bearer auth, 401 → session
+  cleared → login; network-error mapping; typed methods for
+  login/getMe/submitAssessment/fetchAssessments/submitDutyRecord/
+  fetchPredictions.
+- `mobile/lib/core/session.dart` — `AuthController` with restore/login/
+  logout; `onUnauthorized` collapses the nav stack back to login.
+- `mobile/lib/core/token_store.dart` — `SecureTokenStore`
+  (flutter_secure_storage) + `InMemoryTokenStore` for tests.
+- `mobile/lib/main.dart` — auth gate: restoration → unauthenticated →
+  authenticated, wired to the real API.
+- `mobile/android/.../AndroidManifest.xml` — INTERNET permission +
+  cleartext (prototype only).
+- **Tests:** 38 passing including a full login → home → assessment
+  (prediction) → duty → history → logout flow against a contract-mirroring
+  fake; `flutter analyze` clean.
 
 ### Next.js dashboard ↔ FastAPI integration (implemented)
 - `dashboard/types/index.ts` — TypeScript types mirroring the backend schemas
@@ -618,11 +666,10 @@ notifications, and real-data validation are NOT implemented yet.
   destructive only for its own seed personnel; usernames deliberately avoid
   the pytest fixture names so `pytest` still passes with seeded data.
 - **Not implemented in this phase:** review "mark as reviewed" (no PATCH
-  backend endpoint yet), Flutter integration, notifications.
+  backend endpoint yet), notifications; Flutter integration was completed in
+  its own phase — see "Flutter ↔ FastAPI integration (implemented)" above.
 
 ### Not Started
-- Frontend ML integration in Flutter (prediction display) — backend API
-  contract ready; dashboard side complete
 - Human review "mark as reviewed" API (PATCH) — review queue is read-only in
   the dashboard today
 - Real-data validation / real CAPF data (authorized, governed) — pending
@@ -656,7 +703,8 @@ notifications, and real-data validation are NOT implemented yet.
 | Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
 | Next.js login page | Implemented — JWT flow wired to `POST /auth/token` |
 | FastAPI ↔ dashboard integration | Implemented — typed API client, risk overview, personnel directory, HIGH-risk review queue with SHAP factors |
-| Flutter ↔ FastAPI integration | NOT implemented |
-| Documentation files | Placeholders only |
-| End-to-end testing | Partially started — backend `tests/` (87) covers DB + auth + RBAC + assessment/duty/prediction APIs; `ml/tests/` (39) covers the pipeline; Flutter has smoke test only; dashboard verified via live HTTP checks against the seeded backend |
+| Flutter ↔ FastAPI integration | Implemented — personnel Flutter app fully wired to the live backend: LoginScreen → real JWT flow (`POST /auth/token`), secure token storage (`flutter_secure_storage`), HomeScreen + profile via `GET /auth/me`, assessment form → `POST /assessments` (auto ML prediction + SHAP factors), duty form → `POST /duty-records` (server-derived hours; never sends `duty_hours` when clock times given), prediction result screen, history (user-scoped via RBAC), 401 → login with nav-stack collapse; `flutter analyze` clean, 38 Flutter tests passing |
+| Documentation files | PROJECT_CONTEXT.md and `mobile/README.md` are real docs; `docs/*.md` remain placeholders describing planned content |
+| End-to-end testing | Partially started — backend `tests/` (87) covers DB + auth + RBAC + assessment/duty/prediction APIs; `ml/tests/` (39) covers the pipeline; Flutter has 38 widget/unit tests (incl. a full login → assessment → duty → history → logout flow against a contract-mirroring fake) + live HTTP smoke verified against the running backend; dashboard verified via live HTTP checks against the seeded backend |
+| Flutter APK build | Environment-blocked (not code) — local Android cmdline-tools CLI hard-crashes (0xC0000409 / -1073740791) at teardown on every invocation so AGP's sdkmanager probe fails; `platforms/android-36` not installed and the mislabeled `android-37.0` platform is rejected. `flutter analyze` clean; APK build must run on a healthy machine (`flutter build apk --debug`) |
 | Notifications / production deployment | NOT implemented |
