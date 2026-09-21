@@ -65,6 +65,12 @@ void main() {
     expect(find.text('demo_personnel'), findsOneWidget);
     expect(find.text('Personnel key'), findsOneWidget);
     expect(find.text('11111111-1111-1111-1111-111111111111'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.text('Wellness Assessment'),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Wellness Assessment'), findsOneWidget);
     expect(find.text('Duty Record'), findsOneWidget);
     expect(find.text('History'), findsOneWidget);
