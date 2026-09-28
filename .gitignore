@@ -29,6 +29,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Re-include the Flutter mobile app source dir shadowed by the lib/ rule above
+!mobile/lib/
 parts/
 sdist/
 var/
