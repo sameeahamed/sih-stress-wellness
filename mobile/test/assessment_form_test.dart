@@ -139,7 +139,8 @@ void main() {
     expect(find.text('20%'), findsWidgets);
     expect(find.text('70%'), findsWidgets);
     // Ranked contributing factors with the "not medical causes" framing.
-    expect(find.text('Why the model flagged this'), findsOneWidget);
+    expect(find.text('Why this assessment?'), findsOneWidget);
+    expect(find.text('Factors contributing toward higher risk'), findsOneWidget);
     expect(find.text('Elevated weekly duty hours'), findsOneWidget);
     expect(find.textContaining('not medical causes'), findsWidgets);
     // Human-in-the-loop panel for HIGH.

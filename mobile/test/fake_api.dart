@@ -33,6 +33,7 @@ class FakeApiClient extends ApiClient {
 
   List<WellnessAssessment> assessments = [];
   List<Prediction> predictions = [];
+  List<DutyRecord> dutyRecords = [];
 
   @override
   Future<String> login(String username, String password) async {
@@ -95,6 +96,11 @@ class FakeApiClient extends ApiClient {
   @override
   Future<List<WellnessAssessment>> fetchAssessments(String token) async {
     return assessments;
+  }
+
+  @override
+  Future<List<DutyRecord>> fetchDutyRecords(String token) async {
+    return dutyRecords;
   }
 
   @override

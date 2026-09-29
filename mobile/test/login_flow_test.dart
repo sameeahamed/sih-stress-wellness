@@ -68,7 +68,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Welcome, demo_personnel'), findsOneWidget);
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('demo_personnel'), findsWidgets);
     // Role is shown in the header pill and again in the profile card.
     expect(find.text('Personnel'), findsNWidgets(2));
     expect(find.text('Personnel key'), findsOneWidget);

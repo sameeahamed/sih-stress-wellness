@@ -185,6 +185,17 @@ class ApiClient {
     return DutyRecord.fromJson(body);
   }
 
+  /// GET /duty-records — the authenticated personnel's own duty records.
+  /// Used to show the organizational context that exists already, so a
+  /// check-in never has to ask the person to re-enter it.
+  Future<List<DutyRecord>> fetchDutyRecords(String token) async {
+    final body = await _request('GET', '/duty-records', token: token);
+    final list = (body['_list'] as List<dynamic>? ?? []);
+    return list
+        .map((e) => DutyRecord.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// GET /predictions — the authenticated personnel's own predictions.
   Future<List<Prediction>> fetchPredictions(String token) async {
     final body = await _request('GET', '/predictions', token: token);

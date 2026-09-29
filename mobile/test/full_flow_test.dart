@@ -103,7 +103,8 @@ void main() {
 
     // Home
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Welcome, demo_personnel'), findsOneWidget);
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('demo_personnel'), findsWidgets);
 
     // Assessment
     await tester.tap(find.text('Wellness Assessment'));

@@ -340,17 +340,33 @@ class ContributingFactorList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final holdsRiskDown = riskLevel != null && riskLevel != RiskLevel.high;
-    final title = holdsRiskDown ? 'Why the model rated this level' : 'Why the model flagged this';
-    final subtitle = holdsRiskDown
-        ? 'The factors that most influenced this result, strongest first'
-        : 'The factors that most influenced this result, strongest first';
+    // The factor list is always explained relative to HIGH risk, so the
+    // wording has to follow the direction of the result. Calling protective
+    // factors "what pushed this up" would be simply wrong for LOW/MEDIUM.
+    final (String title, String subtitle) = switch (riskLevel) {
+      RiskLevel.high => (
+          'Why this assessment?',
+          'Factors contributing toward higher risk',
+        ),
+      RiskLevel.medium => (
+          'Why this assessment?',
+          'Factors influencing this assessment',
+        ),
+      RiskLevel.low => (
+          'Why this assessment?',
+          'Factors supporting a lower risk assessment',
+        ),
+      null => (
+          'Why this assessment?',
+          'Contributing model factors',
+        ),
+    };
 
     if (factors.isEmpty) {
       return SectionCard(
         icon: Icons.rule_outlined,
         title: title,
-        subtitle: 'Contributing model factors',
+        subtitle: subtitle,
         child: Text(
           'No significant contributing factors were recorded for this result.',
           style: theme.textTheme.bodySmall,
