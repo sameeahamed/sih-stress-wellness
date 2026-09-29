@@ -2,11 +2,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import OfficerOnlyGate, {
+  getStoredUser,
+  isOfficerRole,
+} from "../components/officer-only-gate";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/personnel", label: "Personnel" },
-  { href: "/reviews", label: "Reviews" },
+  { href: "/reviews", label: "HIGH results" },
 ];
 
 interface DashboardLayoutProps {
@@ -14,19 +18,13 @@ interface DashboardLayoutProps {
 }
 
 function getCurrentUser(): { username: string; role: string } | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem("current_user");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return getStoredUser();
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const user = getCurrentUser();
+  const officer = isOfficerRole(user?.role);
 
   function handleSignOut() {
     localStorage.removeItem("access_token");
@@ -115,29 +113,32 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           background: "var(--surface)",
         }}
       >
-        {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                padding: "6px 14px",
-                borderRadius: "8px",
-                color: active ? "#ffffff" : "var(--text)",
-                background: active ? "var(--accent)" : "transparent",
-                textDecoration: "none",
-                fontSize: "14px",
-                fontWeight: active ? 600 : 400,
-              }}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
+        {officer &&
+          NAV_ITEMS.map((item) => {
+            const active = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  color: active ? "#ffffff" : "var(--text)",
+                  background: active ? "var(--accent)" : "transparent",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: active ? 600 : 400,
+                }}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
       </nav>
 
-      <main style={{ flex: 1, padding: "24px" }}>{children}</main>
+      <main style={{ flex: 1, padding: "24px" }}>
+        <OfficerOnlyGate>{children}</OfficerOnlyGate>
+      </main>
 
       <footer
         style={{

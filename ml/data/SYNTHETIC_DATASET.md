@@ -28,8 +28,8 @@ seed (`42`) so it is fully reproducible:
 | `rest_hours_7d` | avg daily rest | 0-14 |
 | `sleep_hours_7d` | avg daily sleep | 0-12 |
 | `workload_level` | self-rated workload | 1-10 |
-| `deployment_days_30d` | days deployed in last 30 | 0-30 |
-| `leave_gap_days` | days since last leave | 0-365 |
+| `deployment_days_30d` | days deployed in last 30 | 0-30, integer (0 or 12-30; the 1-11 band is never generated) |
+| `leave_gap_days` | days since last leave | 0-181 |
 | `leave_count_180d` | leave episodes in 180 d | 0-10 |
 | `transfers_12m` | transfers in 12 months | 0-6 |
 | `duty_intensity` | composite recent-duty intensity | 0-100 |

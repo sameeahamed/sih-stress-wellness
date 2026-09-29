@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import DEFAULT_PAGE_SIZE
 from app.models import DutyRecord, Personnel, User
 from app.schemas.duty import DutyRecordCreate, DutyRecordRead
 from app.services.personnel import get_linked_personnel
@@ -53,7 +54,11 @@ def create_duty_record(
 
 
 def list_duty_records(
-    db: Session, viewer: User, personnel_key: uuid.UUID | None
+    db: Session,
+    viewer: User,
+    personnel_key: uuid.UUID | None,
+    limit: int = DEFAULT_PAGE_SIZE,
+    offset: int = 0,
 ) -> list[DutyRecordRead]:
     personnel_id = resolve_personnel_scope(db, viewer, personnel_key)
     query = (
@@ -63,6 +68,7 @@ def list_duty_records(
     )
     if personnel_id is not None:
         query = query.where(DutyRecord.personnel_id == personnel_id)
+    query = query.limit(limit).offset(offset)
     records = db.scalars(query).all()
     return [_to_read(record) for record in records]
 

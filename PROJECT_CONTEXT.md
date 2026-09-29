@@ -669,9 +669,54 @@ contract the dashboard uses.
   backend endpoint yet), notifications; Flutter integration was completed in
   its own phase — see "Flutter ↔ FastAPI integration (implemented)" above.
 
+### Flutter UI modernization (implemented — UI only)
+Scope was deliberately limited to the personnel Flutter app's presentation
+layer. **No backend, database, ML, API-contract, authentication, RBAC, or
+data-handling change was made in this phase**, and no new dependency was
+added. All existing API calls are unchanged.
+
+- `mobile/lib/theme/app_theme.dart` — single light Material 3 theme as the
+  one source of truth for colour, spacing, and radius tokens, plus the
+  LOW/MEDIUM/HIGH risk palette aligned to the dashboard's tokens.
+- `mobile/lib/widgets/common.dart` — shared `AppMark` branding, `RiskBadge`,
+  `SectionCard`, `SyntheticDataNotice`, `InlineMessage`, `StickyActionBar`,
+  and the shared loading / error / empty page states. Also now hosts
+  `userFacingErrorMessage`, which maps API and parse failures to an
+  actionable sentence while preserving a specific plain-English reason when
+  the backend supplies one.
+- `mobile/lib/widgets/risk.dart` — the risk presentation layer: plain-language
+  `RiskGauge`, per-class probability breakdown, ranked contributing factors,
+  `PredictionProvenance`, and `WelfareReviewNotice` for HIGH results.
+- Screens refreshed: `main.dart` (theme + branded restore state), login,
+  home, assessment, duty form, duty result, prediction result, history.
+- Accessibility/usability: the assessment 1–10 questions are tappable
+  `Semantics`-labelled cells instead of dropdowns; duty duration uses explicit
+  hours + minutes controls; long-form forms keep their submit action visible
+  via `StickyActionBar`; logout requires confirmation.
+- Branding set to the neutral product name **Personnel Stress & Welfare**
+  across `AndroidManifest.xml`, `web/index.html`, `web/manifest.json`, and
+  the `pubspec.yaml` description. No government logos, crests, or
+  official-looking insignia. The Dart package name stays
+  `sih_stress_wellness` as an internal identifier and is never displayed.
+
+**Display-honesty decisions (important for future work):**
+- Probability percentages are rendered only from the API's per-class
+  probabilities. The app performs no client-side probability maths.
+- Contributing-factor bars encode **ranking order only**. The app never
+  derives, normalises, or invents a SHAP magnitude, because magnitudes are
+  not part of the response contract returned to the client. The dashboard
+  retains the real SHAP values for the welfare review workflow.
+- Every risk result is paired with plain-language meaning and a separate
+  "What happens next" statement, and always shows the medical disclaimer.
+
+Verification at completion: `flutter analyze` clean, **41** Flutter tests
+passing, `dart format` clean. `mobile/README.md` updated to match.
+
 ### Not Started
 - Human review "mark as reviewed" API (PATCH) — review queue is read-only in
   the dashboard today
+- Dark mode / `NavigationBar` bottom-navigation refactor — explicitly out of
+  scope for the UI modernization phase; navigation structure was left as-is
 - Real-data validation / real CAPF data (authorized, governed) — pending
 - Notifications, production deployment — pending
 
@@ -703,8 +748,9 @@ contract the dashboard uses.
 | Next.js dashboard foundation | Implemented — app initialized, App Router pages, runs on port 3000 |
 | Next.js login page | Implemented — JWT flow wired to `POST /auth/token` |
 | FastAPI ↔ dashboard integration | Implemented — typed API client, risk overview, personnel directory, HIGH-risk review queue with SHAP factors |
-| Flutter ↔ FastAPI integration | Implemented — personnel Flutter app fully wired to the live backend: LoginScreen → real JWT flow (`POST /auth/token`), secure token storage (`flutter_secure_storage`), HomeScreen + profile via `GET /auth/me`, assessment form → `POST /assessments` (auto ML prediction + SHAP factors), duty form → `POST /duty-records` (server-derived hours; never sends `duty_hours` when clock times given), prediction result screen, history (user-scoped via RBAC), 401 → login with nav-stack collapse; `flutter analyze` clean, 38 Flutter tests passing |
+| Flutter ↔ FastAPI integration | Implemented — personnel Flutter app fully wired to the live backend: LoginScreen → real JWT flow (`POST /auth/token`), secure token storage (`flutter_secure_storage`), HomeScreen + profile via `GET /auth/me`, assessment form → `POST /assessments` (auto ML prediction + SHAP factors), duty form → `POST /duty-records` (server-derived hours; never sends `duty_hours` when clock times given), prediction result screen, history (user-scoped via RBAC), 401 → login with nav-stack collapse; `flutter analyze` clean, 41 Flutter tests passing |
+| Flutter UI modernization | Implemented — presentation layer only, no backend/API/auth/ML change and no new dependency: centralized light Material 3 theme, shared component library, plain-language risk presentation with API-sourced probabilities, order-only factor bars, human-in-the-loop HIGH notice, tappable 1–10 scales, sticky form actions, neutral "Personnel Stress & Welfare" branding; `flutter analyze` clean, 41 tests passing, `dart format` clean |
 | Documentation files | PROJECT_CONTEXT.md and `mobile/README.md` are real docs; `docs/*.md` remain placeholders describing planned content |
-| End-to-end testing | Partially started — backend `tests/` (87) covers DB + auth + RBAC + assessment/duty/prediction APIs; `ml/tests/` (39) covers the pipeline; Flutter has 38 widget/unit tests (incl. a full login → assessment → duty → history → logout flow against a contract-mirroring fake) + live HTTP smoke verified against the running backend; dashboard verified via live HTTP checks against the seeded backend |
+| End-to-end testing | Partially started — backend `tests/` (87) covers DB + auth + RBAC + assessment/duty/prediction APIs; `ml/tests/` (39) covers the pipeline; Flutter has 41 widget/unit tests (incl. a full login → assessment → duty → history → logout flow against a contract-mirroring fake) + live HTTP smoke verified against the running backend; dashboard verified via live HTTP checks against the seeded backend |
 | Flutter APK build | Environment-blocked (not code) — local Android cmdline-tools CLI hard-crashes (0xC0000409 / -1073740791) at teardown on every invocation so AGP's sdkmanager probe fails; `platforms/android-36` not installed and the mislabeled `android-37.0` platform is rejected. `flutter analyze` clean; APK build must run on a healthy machine (`flutter build apk --debug`) |
 | Notifications / production deployment | NOT implemented |

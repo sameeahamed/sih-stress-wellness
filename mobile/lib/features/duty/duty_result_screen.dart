@@ -1,14 +1,15 @@
 /// Confirmation shown after a duty record is saved.
 ///
-/// The duration displayed is the value the backend returned — when clock
-/// times were supplied it was derived server-side, never trusted from the
-/// client.
+/// The duration displayed is the value the backend returned — when clock times
+/// were supplied it was derived server-side, never trusted from the client.
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../core/models.dart';
 import '../../core/session.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/common.dart';
 import '../assessment/assessment_form_screen.dart';
 
 class DutyResultScreen extends StatelessWidget {
@@ -21,89 +22,123 @@ class DutyResultScreen extends StatelessWidget {
   final DutyRecord record;
   final AuthController controller;
 
+  static String _formatHours(double hours) {
+    if (hours == hours.roundToDouble()) return hours.toStringAsFixed(0);
+    return hours.toStringAsFixed(2);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Duty Record Saved'),
-        backgroundColor: theme.colorScheme.inversePrimary,
+        title: const Text('Record Saved'),
         automaticallyImplyLeading: false,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.gutter,
+          0,
+          AppSpacing.gutter,
+          AppSpacing.xxl,
+        ),
         children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-            ),
-            child: Icon(
-              Icons.check_circle_outline,
-              size: 44,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Duty record saved',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Duration is the value returned by the server.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.outline),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _row(context, Icons.event_outlined, 'Date',
-                      formatDateOnly(record.recordDate)),
-                  const Divider(height: 20),
-                  _row(context, Icons.category_outlined, 'Type',
-                      record.dutyType.label),
-                  const Divider(height: 20),
-                  _row(
-                    context,
-                    Icons.timelapse_outlined,
-                    'Duration',
-                    '${record.dutyHours.toStringAsFixed(record.dutyHours == record.dutyHours.roundToDouble() ? 0 : 2)} hours',
-                    emphasize: true,
-                  ),
-                  if (record.startTime != null) ...[
-                    const Divider(height: 20),
-                    _row(context, Icons.schedule, 'Start',
-                        formatDateTime(record.startTime!)),
-                  ],
-                  if (record.endTime != null) ...[
-                    const Divider(height: 20),
-                    _row(context, Icons.timer_outlined, 'End',
-                        formatDateTime(record.endTime!)),
-                  ],
-                  if (record.deploymentId != null) ...[
-                    const Divider(height: 20),
-                    _row(context, Icons.tag_outlined, 'Deployment',
-                        record.deploymentId!),
-                  ],
-                ],
+          const Center(child: SyntheticDataNotice()),
+          const SizedBox(height: AppSpacing.xl),
+          Center(
+            child: Container(
+              width: 68,
+              height: 68,
+              decoration: const BoxDecoration(
+                color: AppColors.successSoft,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_circle_outline,
+                size: 36,
+                color: AppColors.success,
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.lg),
+          Text(
+            'Duty record saved',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineSmall,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'This entry will be used with your next wellness check-in.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          SectionCard(
+            icon: Icons.receipt_long_outlined,
+            title: 'What was recorded',
+            child: Column(
+              children: [
+                _row(
+                  context,
+                  Icons.calendar_today_outlined,
+                  'Date',
+                  formatDateOnly(record.recordDate),
+                ),
+                const Divider(height: AppSpacing.xxl),
+                _row(
+                  context,
+                  Icons.category_outlined,
+                  'Type',
+                  record.dutyType.label,
+                ),
+                const Divider(height: AppSpacing.xxl),
+                _row(
+                  context,
+                  Icons.timelapse_outlined,
+                  'Duration',
+                  '${_formatHours(record.dutyHours)} hours',
+                  emphasize: true,
+                ),
+                if (record.startTime != null) ...[
+                  const Divider(height: AppSpacing.xxl),
+                  _row(
+                    context,
+                    Icons.login_outlined,
+                    'Start',
+                    formatDateTime(record.startTime!),
+                  ),
+                ],
+                if (record.endTime != null) ...[
+                  const Divider(height: AppSpacing.xxl),
+                  _row(
+                    context,
+                    Icons.logout_outlined,
+                    'End',
+                    formatDateTime(record.endTime!),
+                  ),
+                ],
+                if (record.deploymentId != null) ...[
+                  const Divider(height: AppSpacing.xxl),
+                  _row(
+                    context,
+                    Icons.tag_outlined,
+                    'Reference',
+                    record.deploymentId!,
+                  ),
+                ],
+                const Divider(height: AppSpacing.xxl),
+                _row(
+                  context,
+                  Icons.verified_outlined,
+                  'Checked by',
+                  'The system calculated and checked the duration',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
           FilledButton(
             onPressed: () {
               final navigator = Navigator.of(context);
@@ -114,28 +149,13 @@ class DutyResultScreen extends StatelessWidget {
                 ),
               );
             },
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: const Text(
-              'Continue to wellness assessment',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-            ),
+            child: const Text('Continue to wellness check-in'),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.md),
           OutlinedButton(
             onPressed: () {
               Navigator.of(context).popUntil((route) => route.isFirst);
             },
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
             child: const Text('Back to home'),
           ),
         ],
@@ -143,8 +163,13 @@ class DutyResultScreen extends StatelessWidget {
     );
   }
 
-  Widget _row(BuildContext context, IconData icon, String label, String value,
-      {bool emphasize = false}) {
+  Widget _row(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value, {
+    bool emphasize = false,
+  }) {
     final theme = Theme.of(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,27 +178,22 @@ class DutyResultScreen extends StatelessWidget {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color:
-                theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+            color: AppColors.surfaceMuted,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 18, color: theme.colorScheme.primary),
+          child: Icon(icon, size: 17, color: AppColors.textMuted),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: AppSpacing.md),
         SizedBox(
-          width: 90,
-          child: Text(
-            label,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.outline),
-          ),
+          width: 84,
+          child: Text(label, style: theme.textTheme.bodySmall),
         ),
         Expanded(
           child: Text(
             value,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
-              color: emphasize ? theme.colorScheme.primary : null,
+              color: emphasize ? AppColors.brand : AppColors.textPrimary,
             ),
           ),
         ),

@@ -1,11 +1,11 @@
 {
-    "name": "sih_stress_wellness",
-    "short_name": "sih_stress_wellness",
+    "name": "Personnel Stress & Welfare",
+    "short_name": "Stress & Welfare",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F5F6FA",
+    "theme_color": "#1D4ED8",
+    "description": "SIH 2026 prototype: log duty and rest, complete a wellness check-in, and view a LOW, MEDIUM or HIGH stress-risk level. Synthetic demo data only.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.ml import inference
+from app.core.config import DEFAULT_PAGE_SIZE
 from app.models import DutyRecord, Prediction, User, WellnessAssessment
 from app.models.enums import DutyType, ReviewStatus, RiskLevel
 from app.schemas.prediction import PredictionRead
@@ -37,10 +38,15 @@ _WORK_TYPES = (
 DUTY_LOOKBACK_DAYS = 29
 
 # Documented neutral fallback: no LEAVE record on file -> treat the gap as if
-# leave was last taken this many days ago (within the synthetic training
-# range 0-365). Always recorded in the feature snapshot as a default so
-# nothing is silently fabricated.
-DEFAULT_LEAVE_GAP_DAYS = 365.0
+# leave was last taken this many days ago. Capped at the maximum value present
+# in the synthetic training data so the default cannot land far outside the
+# range the model was fitted on. Always recorded in the feature snapshot as a
+# default so nothing is silently fabricated.
+DEFAULT_LEAVE_GAP_DAYS = 181.0
+
+# Upper bound on the 12-month transfer proxy, matching the maximum value
+# generated in the synthetic training data.
+MAX_TRANSFERS_12M = 6.0
 
 SKIP_NO_DUTY = "Not enough duty data to run a stress-risk prediction"
 
@@ -49,6 +55,7 @@ def to_prediction_read(prediction: Prediction) -> PredictionRead:
     """Build the API-safe prediction view from an ORM row."""
     explanation = prediction.shap_explanation or {}
     factors = [str(item) for item in explanation.get("contributing_factors", [])]
+    disclaimer = explanation.get("disclaimer")
     return PredictionRead(
         id=prediction.id,
         personnel_key=prediction.personnel.opaque_key,
@@ -61,22 +68,28 @@ def to_prediction_read(prediction: Prediction) -> PredictionRead:
         model_version=prediction.model_version,
         review_status=ReviewStatus(prediction.review_status),
         created_at=prediction.created_at,
+        disclaimer=str(disclaimer) if disclaimer else None,
     )
 
 
 def _duty_feature_aggregates(
-    db: Session, personnel_id: uuid.UUID
+    db: Session, personnel_id: uuid.UUID, as_of: date | None = None
 ) -> dict | None:
     """Aggregate duty context into the model's duty-derived raw features.
+
+    ``as_of`` anchors the rolling windows. It defaults to today for a fresh
+    prediction, and is set to a previous assessment's date when reconstructing
+    that snapshot's duty context for the week-over-week trend features, so
+    training and inference agree on what the windows mean.
 
     Returns ``None`` when the personnel has no duty records in the last 30
     days (the prediction must be skipped - never fabricated).
     """
-    today = date.today()
+    anchor = as_of or date.today()
     recent_count = db.scalar(
         select(func.count(DutyRecord.id)).where(
             DutyRecord.personnel_id == personnel_id,
-            DutyRecord.record_date >= today - timedelta(days=DUTY_LOOKBACK_DAYS),
+            DutyRecord.record_date >= anchor - timedelta(days=DUTY_LOOKBACK_DAYS),
         )
     )
     if not recent_count:
@@ -86,7 +99,8 @@ def _duty_feature_aggregates(
         total = db.scalar(
             select(func.coalesce(func.sum(DutyRecord.duty_hours), 0)).where(
                 DutyRecord.personnel_id == personnel_id,
-                DutyRecord.record_date >= today - timedelta(days=since_days),
+                DutyRecord.record_date >= anchor - timedelta(days=since_days),
+                DutyRecord.record_date <= anchor,
                 DutyRecord.duty_type.in_(types),
             )
         )
@@ -96,15 +110,33 @@ def _duty_feature_aggregates(
         total = db.scalar(
             select(func.count(DutyRecord.id)).where(
                 DutyRecord.personnel_id == personnel_id,
-                DutyRecord.record_date >= today - timedelta(days=since_days),
+                DutyRecord.record_date >= anchor - timedelta(days=since_days),
+                DutyRecord.record_date <= anchor,
                 DutyRecord.duty_type.in_(types),
             )
         )
-        return float(total or 0.0)
+        return float(total or 0)
+
+    def _count_days_since(since_days: int, types: tuple[str, ...]) -> float:
+        """Distinct calendar days carrying a record of the given types.
+
+        Deployment is a day-count feature in training (see
+        ml/data/generate_synthetic.py), so a short deployment and a long one
+        must both be measured in days, not converted from hours.
+        """
+        total = db.scalar(
+            select(func.count(func.distinct(DutyRecord.record_date))).where(
+                DutyRecord.personnel_id == personnel_id,
+                DutyRecord.record_date >= anchor - timedelta(days=since_days),
+                DutyRecord.record_date <= anchor,
+                DutyRecord.duty_type.in_(types),
+            )
+        )
+        return float(total or 0)
 
     duty_hours_7d = round(min(_sum_hours(6, _WORK_TYPES), 84.0), 1)
     deployment_days_30d = round(
-        min(_sum_hours(29, (DutyType.DEPLOYMENT.value,)) / 24.0, 30.0), 1
+        min(_count_days_since(29, (DutyType.DEPLOYMENT.value,)), 30.0), 1
     )
 
     latest_leave = db.scalar(
@@ -118,7 +150,7 @@ def _duty_feature_aggregates(
         leave_gap_days = DEFAULT_LEAVE_GAP_DAYS
         defaults_applied.append("leave_gap_days")
     else:
-        leave_gap_days = float((today - latest_leave).days)
+        leave_gap_days = float(max((anchor - latest_leave).days, 0))
 
     return {
         "features": {
@@ -129,10 +161,71 @@ def _duty_feature_aggregates(
             # Transfer proxy: distinct deployments on record in the last 12
             # months (documented; there is no dedicated transfer table).
             "transfers_12m": round(
-                min(_count_since(364, (DutyType.DEPLOYMENT.value,)), 10.0), 1
+                min(
+                    _count_days_since(364, (DutyType.DEPLOYMENT.value,)),
+                    MAX_TRANSFERS_12M,
+                ),
+                1,
             ),
         },
         "defaults_applied": defaults_applied,
+    }
+
+
+def _previous_snapshot_features(
+    db: Session, assessment: WellnessAssessment
+) -> dict[str, float] | None:
+    """Raw features of the same person's immediately preceding assessment.
+
+    Returned so inference can reproduce the training-time week-over-week trend
+    derivation (ml/features.py uses a per-person ``shift(1)``). ``None`` means
+    this is the person's first assessment, for which a 0.0 trend is the correct
+    training-consistent value.
+    """
+    previous = db.scalar(
+        select(WellnessAssessment)
+        .where(
+            WellnessAssessment.personnel_id == assessment.personnel_id,
+            WellnessAssessment.id != assessment.id,
+            WellnessAssessment.submitted_at < assessment.submitted_at,
+        )
+        .order_by(WellnessAssessment.submitted_at.desc())
+        .limit(1)
+    )
+    if previous is None:
+        return None
+
+    duty_ctx = _duty_feature_aggregates(
+        db, assessment.personnel_id, as_of=previous.submitted_at.date()
+    )
+    if duty_ctx is None:
+        # No duty history at the previous point in time; the trend is
+        # undefined rather than fabricated.
+        return None
+
+    previous_workload = float(previous.workload_score)
+    previous_duty_hours = duty_ctx["features"]["duty_hours_7d"]
+    deployment_days = duty_ctx["features"]["deployment_days_30d"]
+    previous_duty_intensity = min(
+        max(
+            (previous_duty_hours / 84.0) * 45.0
+            + (deployment_days / 30.0) * 35.0
+            + previous_workload * 2.0,
+            0.0,
+        ),
+        100.0,
+    )
+    return {
+        "duty_hours_7d": previous_duty_hours,
+        "rest_hours_7d": float(previous.rest_hours_7d),
+        "sleep_hours_7d": float(previous.sleep_hours_7d),
+        "workload_level": previous_workload,
+        "deployment_days_30d": deployment_days,
+        "leave_gap_days": duty_ctx["features"]["leave_gap_days"],
+        "leave_count_180d": duty_ctx["features"]["leave_count_180d"],
+        "transfers_12m": duty_ctx["features"]["transfers_12m"],
+        "duty_intensity": round(previous_duty_intensity, 1),
+        "self_report_stress": float(previous.stress_level_self_report),
     }
 
 
@@ -173,7 +266,9 @@ def run_prediction_for_assessment(
 
     try:
         outcome = inference.run_prediction(
-            features, defaults_applied=duty_ctx["defaults_applied"]
+            features,
+            defaults_applied=duty_ctx["defaults_applied"],
+            previous_features=_previous_snapshot_features(db, assessment),
         )
     except inference.ModelLoadError as exc:
         raise HTTPException(
@@ -212,7 +307,11 @@ def run_prediction_for_assessment(
 
 
 def list_predictions(
-    db: Session, viewer: User, personnel_key: uuid.UUID | None
+    db: Session,
+    viewer: User,
+    personnel_key: uuid.UUID | None,
+    limit: int = DEFAULT_PAGE_SIZE,
+    offset: int = 0,
 ) -> list[PredictionRead]:
     """List predictions (newest first) with the shared RBAC scoping rules."""
     personnel_id = resolve_personnel_scope(db, viewer, personnel_key)
@@ -223,6 +322,7 @@ def list_predictions(
     )
     if personnel_id is not None:
         query = query.where(Prediction.personnel_id == personnel_id)
+    query = query.limit(limit).offset(offset)
     predictions = db.scalars(query).all()
     return [to_prediction_read(prediction) for prediction in predictions]
 

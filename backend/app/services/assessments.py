@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import DEFAULT_PAGE_SIZE
 from app.models import Personnel, Prediction, User, WellnessAssessment
 from app.schemas.assessment import WellnessAssessmentCreate, WellnessAssessmentRead
 from app.services.personnel import get_linked_personnel
@@ -70,7 +71,11 @@ def submit_assessment(
 
 
 def list_assessments(
-    db: Session, viewer: User, personnel_key: uuid.UUID | None
+    db: Session,
+    viewer: User,
+    personnel_key: uuid.UUID | None,
+    limit: int = DEFAULT_PAGE_SIZE,
+    offset: int = 0,
 ) -> list[WellnessAssessmentRead]:
     personnel_id = resolve_personnel_scope(db, viewer, personnel_key)
     query = (
@@ -80,6 +85,7 @@ def list_assessments(
     )
     if personnel_id is not None:
         query = query.where(WellnessAssessment.personnel_id == personnel_id)
+    query = query.limit(limit).offset(offset)
     assessments = db.scalars(query).all()
     return [_to_read(assessment) for assessment in assessments]
 

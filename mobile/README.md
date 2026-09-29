@@ -1,8 +1,12 @@
-# SIH Stress & Wellness — Personnel Mobile App (Flutter)
+# Personnel Stress & Welfare — Flutter App
 
 The **personnel-facing** Flutter application of the SIH 2026 prototype
 (AI-Based Predictive Personnel Stress and Welfare Monitoring System for CAPFs
 and Uniformed Forces).
+
+The user-facing product name is **Personnel Stress & Welfare**. The Dart
+package name (`sih_stress_wellness`) is an internal identifier and is never
+shown to a user.
 
 > ⚠️ **SYNTHETIC DEMO DATA.** This prototype runs only against
 > deterministic synthetic seed data. There is NO real CAPF personnel data.
@@ -33,9 +37,44 @@ and Uniformed Forces).
 401 responses (expired/invalid token) redirect to login with a clean
 navigation-stack collapse.
 
+## User interface
+
+The UI is built around one light Material 3 theme
+(`lib/theme/app_theme.dart`) with shared spacing/radius tokens, so every
+screen reads as the same product. Shared components live in
+`lib/widgets/`:
+
+- `common.dart` — `AppMark` branding, `RiskBadge`, `SectionCard`,
+  `SyntheticDataNotice`, `InlineMessage`, `StickyActionBar`, and the
+  loading / error / empty page states.
+- `risk.dart` — the risk presentation layer: plain-language `RiskGauge`,
+  probability breakdown, ranked contributing factors, prediction
+  provenance, and the `WelfareReviewNotice` shown for HIGH results.
+
+UI decisions worth knowing:
+
+- **Plain language over jargon.** A LOW/MEDIUM/HIGH level is always paired
+  with a sentence explaining what it means and a separate "What happens
+  next" statement. ML terminology is kept out of the user-facing copy.
+- **Probabilities come from the API.** The gauge and breakdown display the
+  per-class probabilities the backend returns — no client-side maths.
+  The contributing-factor bars encode **ordering only**; the app never
+  invents or scales a SHAP magnitude, because that is not part of the
+  response contract.
+- **Human in the loop is explicit.** HIGH results show a
+  `WelfareReviewNotice` stating that a person decides, and every result
+  carries the medical-disclaimer card.
+- **Touch-friendly 1–10 scales.** The assessment stress/workload questions
+  are tappable cells with `Semantics` labels instead of dropdowns.
+- **Forms keep their action reachable.** Duty and assessment forms use a
+  `StickyActionBar` so submit stays visible while scrolling.
+- **Errors are actionable.** `userFacingErrorMessage` turns API/parse
+  failures into a next step, while keeping a specific plain-English reason
+  when the backend supplies one.
+
 ## Prerequisites
 
-- Flutter SDK (stable). Tested: `flutter analyze` clean, 38 widget/unit
+- Flutter SDK (stable). Tested: `flutter analyze` clean, 41 widget/unit
   tests passing.
 - A running FastAPI backend (see `../backend/`) with demo seed data loaded
   (`python scripts/seed_demo_data.py`). Default accounts use
@@ -73,7 +112,7 @@ flutter run                       # desktop/web/emulator, uses default base URL
 ## Test
 
 ```sh
-flutter test          # 38 tests: login/auth, assessment+prediction,
+flutter test          # 41 tests: login/auth, assessment+prediction,
                       # duty (server-derived hours), history, full flow,
                       # model parsing, RBAC-scoped history
 flutter analyze       # must be clean
@@ -89,6 +128,10 @@ mobile/
   lib/
     core/            config (API base URL), models, api_client,
                      session (AuthController), secure token store
+    theme/           app_theme.dart — single light Material 3 theme,
+                     spacing/radius tokens, risk colour palette
+    widgets/         common.dart (shared components + page states),
+                     risk.dart (risk, probability and factor display)
     features/
       auth/          login screen
       home/          home + profile
@@ -97,7 +140,7 @@ mobile/
       results/       prediction result screen
       history/       assessment/prediction history
     main.dart        entry point, auth gate, routes
-  test/              widget + unit tests (38)
+  test/              widget + unit tests (41)
 ```
 
 ## Known limitation: Android APK build (environment, not code)
@@ -112,7 +155,7 @@ unrelated to the app code:
   CLI; the installed `platforms/android-37.0` is mislabeled (ApiLevel 37.0 /
   "Android SDK Platform 17"), which AGP rejects.
 
-The app itself compiles clean (`flutter analyze`, 38 tests). To produce an
+The app itself compiles clean (`flutter analyze`, 41 tests). To produce an
 APK on a healthy machine:
 
 ```sh

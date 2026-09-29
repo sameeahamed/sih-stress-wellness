@@ -1,5 +1,5 @@
 name: sih_stress_wellness
-description: "A new Flutter project."
+description: "Personnel Stress & Welfare — SIH 2026 prototype. Records duty and wellness check-ins and presents an AI stress-risk level (LOW/MEDIUM/HIGH) as decision support for authorised welfare staff. Synthetic demo data only."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

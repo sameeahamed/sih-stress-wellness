@@ -39,4 +39,6 @@ export interface Prediction {
   model_version: string;
   review_status: ReviewStatus;
   created_at: string;
+  /** Non-causal, non-medical framing authored by the backend model layer. */
+  disclaimer?: string | null;
 }

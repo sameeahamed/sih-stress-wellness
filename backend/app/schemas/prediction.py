@@ -30,6 +30,11 @@ class PredictionRead(BaseModel):
     model_version: str
     review_status: ReviewStatus
     created_at: datetime
+    # Non-causal, non-medical framing authored by the model layer and stored
+    # with the explanation, so clients show the same wording instead of
+    # re-deriving (and possibly softening) it. Optional: older rows may not
+    # carry an explanation.
+    disclaimer: str | None = None
 
 
 class AssessmentSubmitResponse(WellnessAssessmentRead):

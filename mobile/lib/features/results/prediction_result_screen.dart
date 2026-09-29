@@ -1,19 +1,25 @@
-/// Phase 5 — Prediction result screen.
+/// Assessment result — the main screen of the demo.
 ///
-/// Shows the automatic LOW / MEDIUM / HIGH stress-risk prediction returned
-/// with the assessment submission (mirrors PredictionRead: risk level, per-
-/// class probabilities, SHAP contributing factors, model version). The result
-/// is explicitly framed as a risk indicator, not a medical diagnosis. If the
-/// backend skipped the prediction (e.g. not enough duty data) the reason is
-/// shown instead.
+/// Shows the automatic LOW / MEDIUM / HIGH stress-risk prediction returned with
+/// the assessment submission (mirrors PredictionRead: risk level, per-class
+/// probabilities, contributing factors, model version).
+///
+/// Design intent: a personnel member is not a data scientist. The screen
+/// therefore leads with a large, plain-language result, says what the level
+/// means and what happens next, shows the model's confidence as percentages,
+/// and ranks the contributing factors while stating clearly that they are
+/// model factors rather than medical causes. If the backend skipped the
+/// prediction the reason is shown, together with what to do about it.
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../core/models.dart';
 import '../../core/session.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
-import '../../features/history/history_screen.dart';
+import '../../widgets/risk.dart';
+import '../history/history_screen.dart';
 
 class PredictionResultScreen extends StatelessWidget {
   const PredictionResultScreen({
@@ -30,146 +36,49 @@ class PredictionResultScreen extends StatelessWidget {
     final prediction = result.prediction;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Assessment Result'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('Your Result'),
         automaticallyImplyLeading: false,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.gutter,
+          0,
+          AppSpacing.gutter,
+          AppSpacing.xxl,
+        ),
         children: [
           const Center(child: SyntheticDataNotice()),
-          const SizedBox(height: 16),
-          const RiskDisclaimerCard(),
-          const SizedBox(height: 16),
-          if (prediction == null) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.info_outline, size: 32),
-                    const SizedBox(height: 8),
-                    Text('Assessment submitted',
-                        style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'A stress-risk prediction was not generated for this '
-                      'submission.',
-                    ),
-                    if (result.predictionSkippedReason != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        result.predictionSkippedReason!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+          const SizedBox(height: AppSpacing.lg),
+          if (prediction == null)
+            _NoPredictionCard(reason: result.predictionSkippedReason)
+          else ...[
+            RiskGauge(
+              prediction: prediction,
+              assessmentTime: result.assessment.submittedAt,
             ),
-          ] else ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    Text(
-                      'Predicted stress-risk level',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 16),
-                    Center(child: RiskBadge(prediction.riskLevel)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'AI-generated welfare risk indicator — not a medical '
-                      'diagnosis.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                            fontStyle: FontStyle.italic,
-                          ),
-                    ),
-                    const SizedBox(height: 16),
-                    _ProbabilityBar(
-                      label: 'LOW',
-                      value: prediction.probabilityLow,
-                      color: Colors.green.shade700,
-                    ),
-                    _ProbabilityBar(
-                      label: 'MEDIUM',
-                      value: prediction.probabilityMedium,
-                      color: Colors.amber.shade800,
-                    ),
-                    _ProbabilityBar(
-                      label: 'HIGH',
-                      value: prediction.probabilityHigh,
-                      color: Colors.red.shade700,
-                    ),
-                    const Divider(height: 24),
-                    Row(
-                      children: [
-                        const Icon(Icons.model_training,
-                            size: 18, color: Color(0xFF8896AB)),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Model ${prediction.modelVersion}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const Spacer(),
-                        const Icon(Icons.schedule,
-                            size: 16, color: Color(0xFF8896AB)),
-                        const SizedBox(width: 6),
-                        Text(
-                          formatDateTime(result.assessment.submittedAt),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (prediction.contributingFactors.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Contributing factors',
-                          style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Model-derived contributing factors (SHAP). These are '
-                        'risk factors for the model output, not diagnoses.',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                      const SizedBox(height: 8),
-                      for (final factor in prediction.contributingFactors)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.only(top: 6),
-                                child: Icon(Icons.circle,
-                                    size: 8, color: Colors.blueGrey),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(factor)),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
+            const SizedBox(height: AppSpacing.lg),
+            _NextStepCard(prediction: prediction),
+            if (prediction.riskLevel == RiskLevel.high) ...[
+              const SizedBox(height: AppSpacing.lg),
+              const WelfareReviewNotice(),
             ],
+            const SizedBox(height: AppSpacing.lg),
+            ProbabilityBreakdown(prediction: prediction),
+            const SizedBox(height: AppSpacing.lg),
+            ContributingFactorList(
+              factors: prediction.contributingFactors,
+              riskLevel: prediction.riskLevel,
+              disclaimer: prediction.disclaimer,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            PredictionProvenance(
+              prediction: prediction,
+              assessmentTime: result.assessment.submittedAt,
+            ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xl),
+          const RiskDisclaimerCard(),
+          const SizedBox(height: AppSpacing.xl),
           FilledButton(
             onPressed: () {
               final navigator = Navigator.of(context);
@@ -180,8 +89,9 @@ class PredictionResultScreen extends StatelessWidget {
                 ),
               );
             },
-            child: const Text('View history'),
+            child: const Text('See my history'),
           ),
+          const SizedBox(height: AppSpacing.md),
           OutlinedButton(
             onPressed: () {
               Navigator.of(context).popUntil((route) => route.isFirst);
@@ -194,46 +104,119 @@ class PredictionResultScreen extends StatelessWidget {
   }
 }
 
-class _ProbabilityBar extends StatelessWidget {
-  const _ProbabilityBar({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
+/// "What happens next" — the single most important piece of plain language on
+/// the screen.
+class _NextStepCard extends StatelessWidget {
+  const _NextStepCard({required this.prediction});
 
-  final String label;
-  final double value;
-  final Color color;
+  final Prediction prediction;
 
   @override
   Widget build(BuildContext context) {
-    final clamped = value.clamp(0.0, 1.0);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+    final level = prediction.riskLevel;
+    final tone = AppRisk.of(level);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.card,
+        border: Border.all(color: tone.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 72,
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Row(
+            children: [
+              const Icon(Icons.flag_outlined, size: 18, color: AppColors.brand),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                'What happens next',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ],
           ),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: clamped,
-                minHeight: 10,
-                color: color,
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            level.nextStep,
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown when the backend could not generate a prediction. The usual cause is
+/// a lack of recent duty records, so the screen points the user at the fix
+/// instead of leaving a dead end.
+class _NoPredictionCard extends StatelessWidget {
+  const _NoPredictionCard({required this.reason});
+
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: AppColors.warningSoft,
+        borderRadius: AppRadii.hero,
+        border: Border.all(color: AppColors.warningBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.pending_outlined,
+                size: 24,
+                color: AppColors.warning,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  'Your check-in was saved',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: AppColors.warning,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'A stress-risk level could not be worked out for this check-in yet.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: AppColors.textPrimary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.7),
+              borderRadius: AppRadii.chip,
+            ),
+            child: Text(
+              reason ?? 'Not enough recent duty information was available.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.textPrimary,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 48,
-            child: Text(
-              (clamped * 100).round().toString(),
-              textAlign: TextAlign.right,
-            ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'The system needs at least one duty record from the last 30 days '
+            'before it can produce a level. Once you have logged one, your '
+            'next check-in will include a result.',
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
           ),
         ],
       ),

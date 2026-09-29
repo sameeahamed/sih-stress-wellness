@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import DashboardLayout from "../console-layout";
 import RiskBadge from "../../components/risk-badge";
 import PageState from "../../components/page-state";
-import { fetchPredictions } from "../../lib/api";
+import { fetchPredictions, isTruncated, CONSOLE_PAGE_SIZE } from "../../lib/api";
 import type { Prediction } from "../../types";
 
 function shortKey(key: string): string {
@@ -26,13 +26,24 @@ export default function ReviewsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const queue = useMemo(
-    () =>
-      (predictions ?? [])
-        .filter((p) => p.risk_level === "high")
-        .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)),
-    [predictions],
-  );
+  const queue = useMemo(() => {
+    // One card per person: a person is followed up on their most recent
+    // HIGH result, not on every historical one.
+    const latest = new Map<string, Prediction>();
+    for (const p of predictions ?? []) {
+      if (p.risk_level !== "high") continue;
+      const seen = latest.get(p.personnel_key);
+      if (
+        !seen ||
+        +new Date(p.created_at) > +new Date(seen.created_at)
+      ) {
+        latest.set(p.personnel_key, p);
+      }
+    }
+    return [...latest.values()].sort(
+      (a, b) => +new Date(b.created_at) - +new Date(a.created_at),
+    );
+  }, [predictions]);
 
   return (
     <DashboardLayout>
@@ -46,14 +57,32 @@ export default function ReviewsPage() {
         }}
       >
         <h2 style={{ margin: "0 0 8px", fontSize: "18px" }}>
-          Human review queue
+          HIGH-risk results
         </h2>
         <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: "14px" }}>
-          HIGH-risk predictions flagged by the model, awaiting a welfare
-          officer&apos;s human review. Marking-as-reviewed is a future phase.
+          Predictions the model placed in the HIGH band, newest first. This
+          console is read-only in this build: nothing here is dispatched,
+          assigned, or escalated automatically. Scores are uncalibrated model
+          outputs from synthetic training data, not clinical probabilities.
         </p>
 
         <PageState loading={loading} error={error}>
+          {isTruncated(predictions ?? []) ? (
+            <p
+              style={{
+                margin: "0 0 12px",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                fontSize: "12px",
+                color: "var(--text-muted)",
+              }}
+            >
+              Showing the {CONSOLE_PAGE_SIZE} most recent predictions. Older
+              records are not listed in this build.
+            </p>
+          ) : null}
           {queue.length === 0 ? (
             <div
               style={{
@@ -65,7 +94,7 @@ export default function ReviewsPage() {
                 color: "var(--text-muted)",
               }}
             >
-              No HIGH-risk predictions in the queue.
+              No HIGH-risk predictions recorded.
             </div>
           ) : (
             queue.map((p) => (
@@ -118,7 +147,7 @@ export default function ReviewsPage() {
                 >
                   <div>
                     <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>
-                      Probabilities (model v{p.model_version})
+                      Model scores (v{p.model_version})
                     </div>
                     <div style={{ fontSize: "13px" }}>
                       LOW {p.probability_low.toFixed(2)} · MEDIUM{" "}
@@ -128,7 +157,7 @@ export default function ReviewsPage() {
                   </div>
                   <div>
                     <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>
-                      Contributing factors (SHAP)
+                      Strongest model factors
                     </div>
                     {p.contributing_factors.length > 0 ? (
                       <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "13px" }}>
@@ -138,9 +167,13 @@ export default function ReviewsPage() {
                       </ul>
                     ) : (
                       <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>
-                        No contributing factors recorded.
+                        No model factors recorded.
                       </span>
                     )}
+                    <p style={{ margin: "6px 0 0", fontSize: "11px", color: "var(--text-muted)" }}>
+                      {p.disclaimer ??
+                        "These are feature associations the model weighted most, not medical causes and not a diagnosis."}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -149,8 +182,9 @@ export default function ReviewsPage() {
         </PageState>
 
         <p style={{ margin: "16px 0 0", fontSize: "12px", color: "var(--text-muted)" }}>
-          Decision-support only: a HIGH-risk flag never auto-decides — it always
-          requires human review by an authorized welfare officer or commander.
+          Decision-support only, shown on SYNTHETIC prototype data. A HIGH flag
+          is never an automated decision, and this console records no actions
+          in this build.
         </p>
       </section>
     </DashboardLayout>

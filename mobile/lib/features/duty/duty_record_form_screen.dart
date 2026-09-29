@@ -1,4 +1,4 @@
-/// Phase 4 — Duty record form.
+/// Duty record form.
 ///
 /// Fields mirror the backend `POST /duty-records` schema exactly (see
 /// `backend/app/schemas/duty.py`): record_date (not in the future), duty_type,
@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import '../../core/api_client.dart';
 import '../../core/models.dart';
 import '../../core/session.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import 'duty_result_screen.dart';
 
@@ -65,9 +66,7 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
   Future<void> _pickStartTime() async {
     final picked = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(
-        _startTime ?? DateTime.now(),
-      ),
+      initialTime: TimeOfDay.fromDateTime(_startTime ?? DateTime.now()),
       helpText: 'Duty start time',
     );
     if (picked != null) {
@@ -80,6 +79,7 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
           picked.minute,
         );
         _endTime = null;
+        _apiError = null;
       });
     }
   }
@@ -99,6 +99,7 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
           picked.hour,
           picked.minute,
         );
+        _apiError = null;
       });
     }
   }
@@ -107,11 +108,7 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
     setState(() => _apiError = null);
     if (!_formKey.currentState!.validate()) return;
     if (_recordDate.isAfter(DateTime.now())) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('The record date cannot be in the future.'),
-        ),
-      );
+      setState(() => _apiError = 'The record date cannot be in the future.');
       return;
     }
     final token = widget.controller.token;
@@ -120,28 +117,22 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
     DutyRecordCreate? draft;
     if (_useClockTimes) {
       if (_startTime == null || _endTime == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('Set both a start and an end time (or use hours instead).'),
-          ),
+        setState(
+          () => _apiError =
+              'Set both a start and an end time, or switch to total hours.',
         );
         return;
       }
       if (!_endTime!.isAfter(_startTime!)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('End time must be after start time.'),
-          ),
+        setState(
+          () => _apiError = 'The end time must be after the start time.',
         );
         return;
       }
       final durationHours = _endTime!.difference(_startTime!).inMinutes / 60.0;
       if (durationHours <= 0 || durationHours > 24) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Duty duration must be within (0, 24] hours.'),
-          ),
+        setState(
+          () => _apiError = 'Duty duration must be within (0, 24] hours.',
         );
         return;
       }
@@ -153,6 +144,10 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
         deploymentId: _deploymentController.text.trim(),
       );
     } else {
+      if (_hoursController.text.trim().isEmpty) {
+        setState(() => _apiError = 'Enter the total hours for this record.');
+        return;
+      }
       draft = DutyRecordCreate(
         recordDate: _recordDate,
         dutyType: _dutyType,
@@ -163,40 +158,37 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
 
     setState(() => _submitting = true);
     try {
-      final result = await widget.controller.api
-          .submitDutyRecord(token, draft);
+      final result = await widget.controller.api.submitDutyRecord(token, draft);
       if (!mounted) return;
       setState(() => _submitting = false);
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => DutyResultScreen(
-            record: result,
-            controller: widget.controller,
-          ),
+          builder: (_) =>
+              DutyResultScreen(record: result, controller: widget.controller),
         ),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _apiError = e.message;
+        _apiError = userFacingErrorMessage(e);
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _apiError = 'Unexpected error. Please try again.';
+        _apiError = userFacingErrorMessage(e);
       });
     }
   }
 
   String? _hoursValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return null; // Only required when not using clock times (checked on submit)
+      return 'Enter the total hours';
     }
     final parsed = double.tryParse(value.trim());
     if (parsed == null) {
-      return 'Enter a number';
+      return 'Enter a number, for example 8';
     }
     if (parsed <= 0 || parsed > 24) {
       return 'Must be greater than 0 and at most 24';
@@ -211,75 +203,156 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
     return null;
   }
 
-  String _timeLabel(DateTime? time) =>
-      time == null ? '—' : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  String _timeLabel(DateTime? time) => time == null
+      ? 'not set'
+      : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+
+  /// Live duration preview, so the user can sanity-check their entry before
+  /// submitting. The server remains the authority for the stored value.
+  String? get _durationPreview {
+    if (_useClockTimes) {
+      if (_startTime == null || _endTime == null) return null;
+      final hours = _endTime!.difference(_startTime!).inMinutes / 60.0;
+      if (hours <= 0) return null;
+      return 'That is ${_formatHours(hours)} hours, calculated for you.';
+    }
+    final parsed = double.tryParse(_hoursController.text.trim());
+    if (parsed == null || parsed <= 0) return null;
+    return 'That is ${_formatHours(parsed)} hours.';
+  }
+
+  static String _formatHours(double hours) {
+    final fixed = hours.toStringAsFixed(2);
+    return fixed.endsWith('00')
+        ? hours.toStringAsFixed(0)
+        : fixed.endsWith('0')
+        ? fixed.substring(0, fixed.length - 1)
+        : fixed;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Duty Record'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
+      appBar: AppBar(title: const Text('Duty Record')),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.gutter,
+            0,
+            AppSpacing.gutter,
+            AppSpacing.xl,
+          ),
           children: [
             const Center(child: SyntheticDataNotice()),
-            const SizedBox(height: 16),
-            _DutySection(
-              icon: Icons.event_note_outlined,
-              title: 'Record details',
-              subtitle: 'When and what kind of duty',
-              child: Column(
+            const SizedBox(height: AppSpacing.lg),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.brandSoft,
+                borderRadius: AppRadii.card,
+                border: Border.all(color: AppColors.infoBorder),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer
-                            .withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(Icons.event,
-                          color: Theme.of(context).colorScheme.primary),
-                    ),
-                    title: Text(formatDateOnly(_recordDate),
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: const Text(
-                        'Record date (cannot be in the future)'),
-                    trailing: const Icon(Icons.edit_outlined),
-                    onTap: _submitting ? null : _pickDate,
+                  const Icon(
+                    Icons.info_outline,
+                    size: 20,
+                    color: AppColors.brand,
                   ),
-                  const Divider(),
-                  DropdownButtonFormField<DutyType>(
-                    initialValue: _dutyType,
-                    decoration: const InputDecoration(
-                      labelText: 'Duty type',
-                      border: OutlineInputBorder(),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Text(
+                      'Log what you did and for how long. This is used, '
+                      'together with your wellness check-ins, to work out your '
+                      'stress-risk level. Only the hours are recorded — never '
+                      'your location.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textPrimary,
+                        height: 1.45,
+                      ),
                     ),
-                    items: DutyType.values
-                        .map((t) =>
-                            DropdownMenuItem(value: t, child: Text(t.label)))
-                        .toList(),
-                    onChanged: _submitting
-                        ? null
-                        : (v) =>
-                            setState(() => _dutyType = v ?? DutyType.duty),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            _DutySection(
+            const SizedBox(height: AppSpacing.lg),
+            SectionCard(
+              icon: Icons.event_note_outlined,
+              title: 'What are you recording?',
+              subtitle: 'The day and the type of entry',
+              child: Column(
+                children: [
+                  InkWell(
+                    onTap: _submitting ? null : _pickDate,
+                    borderRadius: AppRadii.chip,
+                    child: Container(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: AppRadii.field,
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.calendar_today_outlined,
+                            size: 18,
+                            color: AppColors.textMuted,
+                          ),
+                          const SizedBox(width: AppSpacing.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Date', style: theme.textTheme.bodySmall),
+                                const SizedBox(height: 2),
+                                Text(
+                                  formatDateOnly(_recordDate),
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: AppColors.brand,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  DropdownButtonFormField<DutyType>(
+                    initialValue: _dutyType,
+                    decoration: const InputDecoration(
+                      labelText: 'Type of entry',
+                      helperText: 'Leave and rest entries count towards rest',
+                    ),
+                    items: DutyType.values
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(_dutyTypeDescription(t)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _submitting
+                        ? null
+                        : (v) => setState(() => _dutyType = v ?? DutyType.duty),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            SectionCard(
               icon: Icons.timelapse_outlined,
-              title: 'Duration',
-              subtitle: 'Clock times or a self-reported duration',
+              title: 'How long?',
+              subtitle: 'Give the start and end time, or just the total hours',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -287,13 +360,13 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
                     segments: const [
                       ButtonSegment(
                         value: true,
-                        icon: Icon(Icons.schedule),
-                        label: Text('Clock times'),
+                        icon: Icon(Icons.schedule, size: 18),
+                        label: Text('Start & end time'),
                       ),
                       ButtonSegment(
                         value: false,
-                        icon: Icon(Icons.timer_outlined),
-                        label: Text('Hours'),
+                        icon: Icon(Icons.timer_outlined, size: 18),
+                        label: Text('Total hours'),
                       ),
                     ],
                     selected: {_useClockTimes},
@@ -302,177 +375,196 @@ class _DutyRecordFormScreenState extends State<DutyRecordFormScreen> {
                       _apiError = null;
                     }),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.lg),
                   if (_useClockTimes) ...[
-                    const Text(
-                      'When both times are set, the duration is calculated by '
-                      'the server — no hours need to be entered.',
-                      style: TextStyle(fontSize: 13),
+                    Text(
+                      'Set the times you started and finished. The duration is '
+                      'worked out for you.',
+                      style: theme.textTheme.bodySmall,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.play_arrow),
-                            label:
-                                Text('Start ${_timeLabel(_startTime)}'),
+                          child: _TimeButton(
+                            icon: Icons.login_outlined,
+                            label: 'Start',
+                            value: _timeLabel(_startTime),
                             onPressed: _submitting ? null : _pickStartTime,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppSpacing.md),
                         Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.stop),
-                            label: Text('End ${_timeLabel(_endTime)}'),
+                          child: _TimeButton(
+                            icon: Icons.logout_outlined,
+                            label: 'End',
+                            value: _timeLabel(_endTime),
                             onPressed: _submitting ? null : _pickEndTime,
                           ),
                         ),
                       ],
                     ),
-                    if (_startTime != null && _endTime != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Builder(builder: (context) {
-                          final dur = _endTime!.difference(_startTime!).inMinutes /
-                              60.0;
-                          return Text(
-                            dur > 0 ? '≈ ${dur.toStringAsFixed(2)} hours' : '',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          );
-                        }),
-                      ),
-                  ] else
+                  ] else ...[
+                    Text(
+                      'If you do not have exact times, enter the total hours '
+                      'you spent on this entry.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
                     TextFormField(
+                      key: const Key('duty-hours'),
                       controller: _hoursController,
                       enabled: !_submitting,
                       keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                        decimal: true,
+                      ),
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d*\.?\d{0,2}')),
+                          RegExp(r'^\d{0,2}(\.\d{0,2})?'),
+                        ),
                       ],
                       decoration: const InputDecoration(
-                        labelText: 'Duty hours',
-                        hintText: 'e.g. 8',
-                        suffixText: 'hours',
+                        labelText: 'Total hours',
                         helperText: 'More than 0 and at most 24 hours',
+                        suffixText: 'hours',
                         border: OutlineInputBorder(),
                       ),
                       validator: _hoursValidator,
-                      onChanged: (v) => setState(() => _apiError = null),
+                      onChanged: (_) => setState(() => _apiError = null),
                     ),
+                  ],
+                  if (_durationPreview != null) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle_outline,
+                          size: 16,
+                          color: AppColors.success,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            _durationPreview!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            _DutySection(
+            const SizedBox(height: AppSpacing.lg),
+            SectionCard(
               icon: Icons.tag_outlined,
-              title: 'Optional reference',
-              subtitle: 'Deployment identifier if applicable',
+              title: 'Reference (optional)',
+              subtitle:
+                  'Add a deployment or operation reference, if you have one',
               child: TextFormField(
                 controller: _deploymentController,
                 enabled: !_submitting,
                 maxLength: 64,
                 decoration: const InputDecoration(
-                  labelText: 'Deployment ID (optional)',
+                  labelText: 'Deployment or operation reference',
+                  hintText: 'Leave blank if not applicable',
                   border: OutlineInputBorder(),
                 ),
                 validator: _deploymentValidator,
-                onChanged: (v) => setState(() => _apiError = null),
+                onChanged: (_) => setState(() => _apiError = null),
               ),
             ),
             if (_apiError != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _apiError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
+              const SizedBox(height: AppSpacing.lg),
+              InlineMessage(message: _apiError!),
             ],
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: _submitting ? null : _submit,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: _submitting
-                  ? const SizedBox(
+          ],
+        ),
+      ),
+      bottomNavigationBar: StickyActionBar(
+        child: FilledButton(
+          onPressed: _submitting ? null : _submit,
+          child: _submitting
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2,
+                        strokeWidth: 2.5,
                         color: Colors.white,
                       ),
-                    )
-                  : const Text(
-                      'Submit duty record',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                     ),
-            ),
-          ],
+                    SizedBox(width: AppSpacing.md),
+                    Text('Saving…'),
+                  ],
+                )
+              : const Text('Save duty record'),
         ),
       ),
     );
   }
+
+  static String _dutyTypeDescription(DutyType type) => switch (type) {
+    DutyType.duty => 'Duty',
+    DutyType.deployment => 'Deployment',
+    DutyType.leave => 'Leave',
+    DutyType.rest => 'Rest',
+    DutyType.training => 'Training',
+  };
 }
 
-class _DutySection extends StatelessWidget {
-  const _DutySection({
+class _TimeButton extends StatelessWidget {
+  const _TimeButton({
     required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.child,
+    required this.label,
+    required this.value,
+    required this.onPressed,
   });
 
   final IconData icon;
-  final String title;
-  final String subtitle;
-  final Widget child;
+  final String label;
+  final String value;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer
-                        .withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, size: 22, color: theme.colorScheme.primary),
+    final isSet = value != 'not set';
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(64),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+        shape: const RoundedRectangleBorder(borderRadius: AppRadii.field),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: AppColors.brand),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: AppColors.textMuted,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
-                          style: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600)),
-                      Text(subtitle,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: theme.colorScheme.outline)),
-                    ],
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: isSet ? AppColors.textPrimary : AppColors.textMuted,
             ),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

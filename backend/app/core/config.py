@@ -5,6 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Repository root = backend/app/core -> repo root (three levels up).
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# List endpoints are bounded so a single request can never pull an unbounded
+# table into memory or a response body. Clients that legitimately need more
+# page explicitly; the cap is the ceiling.
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 200
+
 
 class Settings(BaseSettings):
     APP_NAME: str = "SIH 2026 Stress & Welfare Monitoring API"

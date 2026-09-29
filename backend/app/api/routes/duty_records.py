@@ -9,10 +9,11 @@ scoped to one personnel via its opaque key.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user, require_roles
+from app.core.config import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.db.session import get_db
 from app.models import Role, User
 from app.schemas.duty import DutyRecordCreate, DutyRecordRead
@@ -50,13 +51,18 @@ def read_duty_records(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(READ_ROLES)],
     personnel_key: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[DutyRecordRead]:
     """List duty records, newest first.
 
     PERSONNEL always see only their own records; view-roles may optionally
-    scope to one personnel via its opaque key.
+    scope to one personnel via its opaque key. Bounded by ``limit``
+    (default 50, max 200); use ``offset`` to page.
     """
-    return list_duty_records(db, current_user, personnel_key)
+    return list_duty_records(
+        db, current_user, personnel_key, limit=limit, offset=offset
+    )
 
 
 @router.get("/{record_id}", response_model=DutyRecordRead)

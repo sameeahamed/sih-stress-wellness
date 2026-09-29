@@ -3,7 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import DashboardLayout from "../console-layout";
 import RiskBadge from "../../components/risk-badge";
 import PageState from "../../components/page-state";
-import { fetchAssessments, fetchPredictions } from "../../lib/api";
+import {
+  fetchAssessments,
+  fetchPredictions,
+  isTruncated,
+  CONSOLE_PAGE_SIZE,
+} from "../../lib/api";
 import type { Prediction, WellnessAssessment } from "../../types";
 
 function shortKey(key: string): string {
@@ -161,8 +166,16 @@ export default function PersonnelPage() {
 
         <p style={{ margin: "16px 0 0", fontSize: "12px", color: "var(--text-muted)" }}>
           Personnel are shown as opaque pseudonymized keys only — no personal
-          data is ever exposed.
+          data is ever exposed. This roster is derived from the assessments and
+          predictions in the table above, so anyone who has neither yet is not
+          listed.
         </p>
+        {isTruncated(predictions ?? []) || isTruncated(assessments ?? []) ? (
+          <p style={{ margin: "8px 0 0", fontSize: "12px", color: "var(--text-muted)" }}>
+            Showing the {CONSOLE_PAGE_SIZE} most recent records. Older records
+            are not listed in this build.
+          </p>
+        ) : null}
       </section>
     </DashboardLayout>
   );

@@ -11,10 +11,11 @@ wellness assessment (see ``POST /assessments``). These endpoints only read:
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
+from app.core.config import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.db.session import get_db
 from app.models import Role, User
 from app.schemas.prediction import PredictionRead
@@ -32,13 +33,17 @@ def read_predictions(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(READ_ROLES)],
     personnel_key: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[PredictionRead]:
     """List stress-risk predictions, newest first.
 
     PERSONNEL always see only their own predictions; view-roles may optionally
-    scope to one personnel via its opaque key.
+    scope to one personnel via its opaque key. The result is bounded by
+    ``limit`` (default 50, max 200) so a single request cannot pull an
+    unbounded table; use ``offset`` to page.
     """
-    return list_predictions(db, current_user, personnel_key)
+    return list_predictions(db, current_user, personnel_key, limit=limit, offset=offset)
 
 
 @router.get("/{prediction_id}", response_model=PredictionRead)

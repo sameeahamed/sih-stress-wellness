@@ -26,7 +26,13 @@ export default function RiskBadge({
   probability?: number;
 }) {
   const s = STYLES[risk];
-  const pct = probability !== undefined ? ` (${(probability * 100).toFixed(0)}%)` : "";
+  // Labelled "score", not a percentage: this is an uncalibrated model output
+  // from a synthetic-data model, and "HIGH (91%)" reads as a clinical
+  // probability of a condition, which it is not.
+  const score =
+    probability !== undefined
+      ? ` · score ${probability.toFixed(2)}`
+      : "";
   return (
     <span
       style={{
@@ -43,7 +49,7 @@ export default function RiskBadge({
       }}
     >
       {risk}
-      {pct}
+      {score}
     </span>
   );
 }

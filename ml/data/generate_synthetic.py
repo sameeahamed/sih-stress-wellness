@@ -46,15 +46,23 @@ import yaml
 ML_ROOT = Path(__file__).resolve().parents[1]
 
 # (column, min, max) used both by the generator and the validator.
+#
+# These are the ranges the generator can actually emit, which is what the model
+# is fitted on. They are deliberately tight: inference defaults and clamps must
+# not send inputs from outside this support, because the model has no evidence
+# there. Verified against the generated dataset (v1: 4800 rows).
 COLUMN_RANGES = {
     "duty_hours_7d": (0.0, 84.0),
     "rest_hours_7d": (0.0, 14.0),
     "sleep_hours_7d": (0.0, 12.0),
     "workload_level": (1.0, 10.0),
+    # Integer day count, and either 0 or a heavy 12-30 day block: the interval
+    # (0, 12) is never generated.
     "deployment_days_30d": (0.0, 30.0),
-    "leave_gap_days": (0.0, 365.0),
+    # weeks_since_leave is drawn from randint(0, 26), so 181 is the true max.
+    "leave_gap_days": (0.0, 181.0),
     "leave_count_180d": (0.0, 20.0),
-    "transfers_12m": (0.0, 20.0),
+    "transfers_12m": (0.0, 6.0),
     "duty_intensity": (0.0, 100.0),
     "self_report_stress": (1.0, 10.0),
 }

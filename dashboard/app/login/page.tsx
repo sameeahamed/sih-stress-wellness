@@ -17,7 +17,10 @@ export default function LoginPage() {
       localStorage.setItem("access_token", access_token);
       const me = await getMe();
       localStorage.setItem("current_user", JSON.stringify(me));
-      window.location.href = "/dashboard";
+      // Personnel have no place in the monitoring console, so send them
+      // somewhere that explains that instead of the officer dashboard.
+      window.location.href =
+        me.role === "personnel" ? "/no-console-access" : "/dashboard";
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Login failed";

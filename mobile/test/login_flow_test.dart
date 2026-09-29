@@ -8,10 +8,7 @@ import 'fake_api.dart';
 void main() {
   Future<void> pumpApp(WidgetTester tester, FakeApiClient api) async {
     await tester.pumpWidget(
-      SihStressWellnessApp(
-        apiClient: api,
-        tokenStore: InMemoryTokenStore(),
-      ),
+      SihStressWellnessApp(apiClient: api, tokenStore: InMemoryTokenStore()),
     );
   }
 
@@ -19,7 +16,7 @@ void main() {
     await pumpApp(tester, FakeApiClient());
     await tester.pumpAndSettle();
 
-    expect(find.text('Personnel App'), findsOneWidget);
+    expect(find.text('Personnel Stress & Welfare'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('SYNTHETIC DEMO DATA'), findsOneWidget);
   });
@@ -47,36 +44,48 @@ void main() {
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Incorrect username or password'), findsOneWidget);
-    expect(find.text('Personnel App'), findsOneWidget);
+    expect(
+      find.textContaining('Sign-in failed. Check your username and password'),
+      findsOneWidget,
+    );
+    expect(find.text('Personnel Stress & Welfare'), findsOneWidget);
   });
 
   testWidgets('logs in and lands on the personnel home screen', (tester) async {
+    tester.view.physicalSize = const Size(420, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     final api = FakeApiClient();
     await pumpApp(tester, api);
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).at(0), 'demo_personnel');
-    await tester.enterText(find.byType(TextFormField).at(1), 'demo-password-123');
+    await tester.enterText(
+      find.byType(TextFormField).at(1),
+      'demo-password-123',
+    );
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Personnel Home'), findsOneWidget);
-    expect(find.text('demo_personnel'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Welcome, demo_personnel'), findsOneWidget);
+    // Role is shown in the header pill and again in the profile card.
+    expect(find.text('Personnel'), findsNWidgets(2));
     expect(find.text('Personnel key'), findsOneWidget);
-    expect(find.text('11111111-1111-1111-1111-111111111111'), findsOneWidget);
-    await tester.dragUntilVisible(
-      find.text('Wellness Assessment'),
-      find.byType(ListView),
-      const Offset(0, -200),
-    );
-    await tester.pumpAndSettle();
+    // The opaque key is shown truncated, not as a full 36-character UUID.
+    expect(find.text('11111111…1111'), findsOneWidget);
+    expect(find.text('11111111-1111-1111-1111-111111111111'), findsNothing);
     expect(find.text('Wellness Assessment'), findsOneWidget);
     expect(find.text('Duty Record'), findsOneWidget);
-    expect(find.text('History'), findsOneWidget);
+    expect(find.text('My History'), findsOneWidget);
   });
 
-  testWidgets('log out returns the user to the login screen', (tester) async {
+  testWidgets('log out asks for confirmation before ending the session', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     final api = FakeApiClient();
     final store = InMemoryTokenStore();
     await store.write('test-token');
@@ -85,12 +94,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Personnel Home'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.logout));
     await tester.pumpAndSettle();
+    expect(find.text('Sign out?'), findsOneWidget);
+    expect(await store.read(), 'test-token');
 
-    expect(find.text('Personnel App'), findsOneWidget);
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Personnel Stress & Welfare'), findsOneWidget);
     expect(await store.read(), isNull);
   });
 }

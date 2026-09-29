@@ -290,6 +290,7 @@ class Prediction {
     required this.reviewStatus,
     required this.createdAt,
     this.assessmentId,
+    this.disclaimer,
   });
 
   final String id;
@@ -303,6 +304,10 @@ class Prediction {
   final String modelVersion;
   final ReviewStatus reviewStatus;
   final DateTime createdAt;
+
+  /// Non-causal, non-medical framing authored by the backend model layer.
+  /// Optional: older stored predictions may predate it.
+  final String? disclaimer;
 
   factory Prediction.fromJson(Map<String, dynamic> json) => Prediction(
         id: json['id'] as String,
@@ -318,6 +323,7 @@ class Prediction {
         modelVersion: json['model_version'] as String? ?? '',
         reviewStatus: ReviewStatus.fromWire(json['review_status'] as String),
         createdAt: DateTime.parse(json['created_at'] as String),
+        disclaimer: json['disclaimer'] as String?,
       );
 }
 
